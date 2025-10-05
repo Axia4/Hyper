@@ -344,6 +344,21 @@ export default {
 		window.removeEventListener('keydown',this.handleHotkeys);
 		this.timerClearAll();
 	},
+	watch:{
+		valuesNew:{
+			handler() {
+				// save draft when values change (debounced via timeout)
+				if(this.draftSaveTimeout !== null)
+					clearTimeout(this.draftSaveTimeout);
+				
+				this.draftSaveTimeout = setTimeout(() => {
+					this.draftSave();
+					this.draftSaveTimeout = null;
+				},1000);
+			},
+			deep:true
+		}
+	},
 	data() {
 		return {
 			// states
@@ -351,6 +366,7 @@ export default {
 			badSave:false,          // attempted save (data SET) with invalid fields, also updates data fields
 			blockInputs:false,      // disable all user inputs (used by frontend functions)
 			changingRecord:false,   // form is currently attempting to change the current record (saving/deleting)
+			draftSaveTimeout:null,  // timeout for debounced draft saving
 			firstLoad:true,         // form was not used before
 			lastFormId:'',          // when routing occurs: if ID is the same, no need to rebuild form
 			layoutCheckTimer:null,  // layout resize timer
@@ -981,6 +997,51 @@ export default {
 			this.messageTimeout = setTimeout(() => this.message = null,
 				typeof duration !== 'undefined' ? duration : 3000);
 		},
+		
+		// draft management
+		draftGetKey() {
+			return `${this.form.id}_${this.recordIds.join('_')}`;
+		},
+		draftSave() {
+			// don't save drafts for read-only forms or forms without changes
+			if(this.form.noDataActions || Object.keys(this.valuesNew).length === 0)
+				return;
+			
+			this.$store.commit('local/valueDraftsSet',{
+				formId:this.form.id,
+				recordIds:this.recordIds,
+				values:this.valuesNew
+			});
+		},
+		draftRestore() {
+			const key = this.draftGetKey();
+			const valueDrafts = this.$store.getters['local/valueDrafts'];
+			
+			if(valueDrafts[key] === undefined)
+				return;
+			
+			const draft = valueDrafts[key];
+			
+			// check if draft is not too old (max 24 hours)
+			const now = Math.floor(Date.now() / 1000);
+			if(now - draft.timestamp > 86400) {
+				this.draftRemove();
+				return;
+			}
+			
+			// restore draft values
+			for(const ia in draft.values) {
+				if(this.valuesDef[ia] !== undefined) {
+					this.valueSet(ia,draft.values[ia],false,true);
+				}
+			}
+		},
+		draftRemove() {
+			this.$store.commit('local/valueDraftsRemove',{
+				formId:this.form.id,
+				recordIds:this.recordIds
+			});
+		},
 		reset() {
 			// set form to loading as data is being changed, will be released once form is ready
 			this.loading = true;
@@ -1032,8 +1093,14 @@ export default {
 			// load record if relevant
 			this.get();
 			
-			if(!this.isWidget && !this.isMobile)
-				this.$nextTick(() => this.fieldSetFocus(this.form.fieldIdFocus,true));
+			// restore draft values after loading record (if available)
+			// this will be called after get() completes via nextTick
+			this.$nextTick(() => {
+				this.draftRestore();
+				
+				if(!this.isWidget && !this.isMobile)
+					this.fieldSetFocus(this.form.fieldIdFocus,true);
+			});
 		},
 		resetRecordMeta() {
 			this.badSave                   = false;
@@ -1896,6 +1963,9 @@ export default {
 					
 					// clear form changes, relevant for after-save functions that open a form
 					this.valuesOld = JSON.parse(JSON.stringify(this.valuesNew));
+					
+					// remove draft after successful save
+					this.draftRemove();
 					
 					this.triggerEventAfter('save');
 					
