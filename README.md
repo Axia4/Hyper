@@ -130,8 +130,9 @@ Copyright (c) 2025 EuskadiTech (TM)
 
 Released under the [MIT License](https://opensource.org/license/mit).
 
-Axia is based on r3_team/r3. For trademark issues, open an issue or email: soporte (at) tech (dot) eus
+Axia is based on r3_team/r3. For trademark issues, open an issue or email: soporte (at) tech (dot) eus.
 
+The original license permits modifications & commercial versions of the program.
 ---
 
-[![Stargazers](https://reporoster.com/stars/dark/EuskadiTech/tallarin)](https://github.com/EuskadiTech/tallarin/stargazers)
+[![Stargazers](https://reporoster.com/stars/dark/EuskadiTech/Axia)](https://github.com/EuskadiTech/Axia/stargazers)
