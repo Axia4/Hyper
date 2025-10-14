@@ -26,8 +26,10 @@ This document explains how to use the new GitHub release workflow for the Tallar
 
 Each archive contains:
 - The compiled binary (`r3` or `r3.exe`)
-- Configuration templates (`config_template.json`, `config_dedicated.json`, `config_portable.json`)
-- License and documentation
+- Configuration template (`config_template.json`)
+  - **Note for Windows**: Uses portable configuration by default
+- LICENSE file
+- **Windows only**: PostgreSQL 16 dependencies in `pgsql16/` folder
 
 ### Docker Image
 - **Registry**: `ghcr.io/your-org/tallarin`
@@ -62,9 +64,28 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 GOOS=linux GOARCH=amd64 go build -o r3_linux_amd64
 GOOS=windows GOARCH=amd64 go build -o r3_windows_amd64.exe
 
+# Test packaging with the distribution script
+python3 package_release.py r3_linux_amd64 linux --output r3_linux_amd64
+python3 package_release.py r3_windows_amd64.exe windows --output r3_windows_amd64
+
 # Test Docker build
 docker build -t tallarin:test .
 ```
+
+### Manual Packaging
+If you need to manually create distribution packages, use the `package_release.py` script:
+
+```bash
+# Package for Linux (creates tar.gz)
+python3 package_release.py <binary_path> linux [--output <name>]
+
+# Package for Windows (creates zip with PostgreSQL dependencies)
+python3 package_release.py <binary_path> windows [--output <name>]
+```
+
+The script will:
+- **Linux**: Create a tar.gz with the binary (renamed to `r3`), `config_template.json`, and `LICENSE`
+- **Windows**: Create a zip with the binary (renamed to `r3.exe`), `config_template.json` (using portable config), `LICENSE`, and PostgreSQL 16 dependencies in `pgsql16/` folder
 
 ### Version Management
 The workflow automatically injects the release tag into the binary:
@@ -95,6 +116,7 @@ The workflow automatically injects the release tag into the binary:
 ├── workflows/
 │   ├── release.yml           # Main release workflow
 │   └── README.md            # Workflow documentation
+├── package_release.py        # Distribution packaging script
 ├── Dockerfile               # Production Docker image
 ├── docker-compose.yml       # Development environment
 ├── docker-compose.dev.yml   # Development overrides
