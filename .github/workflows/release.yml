@@ -60,27 +60,12 @@ jobs:
       - name: Create archive (Linux)
         if: matrix.goos == 'linux'
         run: |
-          mkdir -p release_package
-          cp ${{ matrix.binary_name }} release_package/r3
-          cp config_template.json release_package/
-          cp config_dedicated.json release_package/
-          cp config_portable.json release_package/
-          cp LICENSE release_package/
-          cp README.md release_package/
-          chmod +x release_package/r3
-          tar -czf ${{ matrix.binary_name }}.tar.gz -C release_package .
+          python3 package_release.py ${{ matrix.binary_name }} linux --output release
 
       - name: Create archive (Windows)
         if: matrix.goos == 'windows'
         run: |
-          mkdir -p release_package
-          cp ${{ matrix.binary_name }} release_package/r3.exe
-          cp config_template.json release_package/
-          cp config_dedicated.json release_package/
-          cp config_portable.json release_package/
-          cp LICENSE release_package/
-          cp README.md release_package/
-          cd release_package && zip -r ../${{ matrix.binary_name }}.zip .
+          python3 package_release.py ${{ matrix.binary_name }} windows --output release
 
       - name: Upload Release Asset (Linux)
         if: matrix.goos == 'linux'
@@ -89,7 +74,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./${{ matrix.binary_name }}.tar.gz
+          asset_path: ./release.tar.gz
           asset_name: ${{ matrix.binary_name }}.tar.gz
           asset_content_type: application/gzip
 
@@ -100,7 +85,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./${{ matrix.binary_name }}.zip
+          asset_path: ./release.zip
           asset_name: ${{ matrix.binary_name }}.zip
           asset_content_type: application/zip
 
