@@ -27,3 +27,8 @@ test_build
 
 # Runtime configuration files
 config.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
