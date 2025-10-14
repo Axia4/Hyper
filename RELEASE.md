@@ -107,3 +107,13 @@ The workflow automatically injects the release tag into the binary:
 - Static binaries with CGO disabled for security and portability
 - Builds use official Go and Alpine base images
 - Container registry uses GitHub's GHCR with repository permissions
+
+## Performance Optimizations
+
+### Docker Performance
+Docker instances automatically skip fsync operations during file copy/move operations for better performance:
+- Container storage drivers (overlay, aufs) can make fsync extremely slow
+- The application auto-detects container environments and disables fsync accordingly
+- This significantly improves performance during app installs and builder changes
+- Can be manually controlled via `REI3_SKIP_FSYNC` environment variable (set to `true` or `false`)
+- Data integrity is maintained as the OS will eventually flush data to disk

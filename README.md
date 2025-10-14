@@ -72,6 +72,8 @@ sudo systemctl start rei3
 
 **Docker**
 - Docker Compose files available: [x64](https://rei3.de/docker_x64) / [arm64](https://rei3.de/docker_arm64)
+- **Performance**: Docker instances automatically skip fsync operations for better performance with container storage drivers
+- To manually control this behavior, set the `REI3_SKIP_FSYNC` environment variable to `true` or `false`
 
 ### First Login
 Access Axia at `https://localhost:6129` (default credentials: `admin` / `admin`)

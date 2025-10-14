@@ -44,6 +44,10 @@ RUN chmod +x /app/r3
 # Switch to non-root user
 USER rei3
 
+# Set environment variable to skip fsync for better performance in Docker
+# Container storage drivers (overlay, aufs) can make fsync very slow
+ENV REI3_SKIP_FSYNC=true
+
 # Expose default ports
 EXPOSE 80 443
 
