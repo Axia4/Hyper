@@ -40,7 +40,7 @@ func Start() error {
 			}
 		} else {
 			// initialize database using initdb if template doesn't exist
-			os.Mkdir(dbData)
+			os.Mkdir(dbData, 0700)
 			if err := initializeDatabase(); err != nil {
 				return err
 			}
