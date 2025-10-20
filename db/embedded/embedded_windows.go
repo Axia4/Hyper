@@ -95,7 +95,6 @@ func initializeDatabase() error {
 	// Create initdb command
 	cmd := exec.Command(filepath.Join(dbBin, "initdb"),
 		"-D", dbData,
-		"-U", config.File.Db.User,
 		"--auth-local=trust", 
 		"--auth-host=trust",
 		"-E", "UTF8",
@@ -146,7 +145,6 @@ func createApplicationDatabase() error {
 	// Create the application database and user using psql
 	createDbCmd := exec.Command(filepath.Join(dbBin, "psql"),
 		"-p", fmt.Sprintf("%d", config.File.Db.Port),
-		"-U", config.File.Db.User,
 		"-d", "postgres", // Connect to the default postgres database first
 		"-c", "CREATE DATABASE app WITH OWNER = app TEMPLATE = template0 ENCODING = 'UTF8'",
 	)
@@ -178,7 +176,6 @@ func createApplicationUser() error {
 	// Create the application database and user using psql
 	createDbCmd := exec.Command(filepath.Join(dbBin, "psql"),
 		"-p", fmt.Sprintf("%d", config.File.Db.Port),
-		"-U", config.File.Db.User,
 		"-d", "postgres", // Connect to the default postgres database first
 		"-c", "CREATE ROLE app WITH LOGIN PASSWORD 'app';",
 	)
