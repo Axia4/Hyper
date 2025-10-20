@@ -97,7 +97,7 @@ func initializeDatabase() error {
 		"-D", dbData,
 		"-U", config.File.Db.User,
 		"--auth-local=trust", 
-		"--auth-host=md5",
+		"--auth-host=trust",
 		"-E", "UTF8",
 		"--locale=C",
 		"--no-instructions")
