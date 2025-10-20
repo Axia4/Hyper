@@ -1,5 +1,4 @@
-![r3_logo_git](www/images/logo.png)
-<h1 align="center">Axia</h1>
+<h1 align="center"><img align="center" width="128" src="www/images/icon_fav512.png" alt="Logo Axia4"><br> Axia</h1>
 <p align="center"><strong>Free and open low code platform</strong><br />Build and host powerful applications with full control</p>
 
 <p align="center">
