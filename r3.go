@@ -601,9 +601,9 @@ func createRequiredDirectories() error {
 	}
 	
 	// Add embedded database data path only if embedded DB is enabled
-	if config.File.Db.Embedded {
-		directories = append(directories, config.File.Paths.EmbeddedDbData)
-	}
+	//if config.File.Db.Embedded {
+	//	directories = append(directories, config.File.Paths.EmbeddedDbData)
+	//}
 	
 	for _, dir := range directories {
 		if dir == "" {
