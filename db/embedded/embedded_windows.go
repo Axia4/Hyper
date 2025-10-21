@@ -118,10 +118,10 @@ func initializeDatabase() error {
 	log.Info(log.ContextServer, "Database cluster initialized successfully with initdb")
 	
 	// Now we need to start the database temporarily to create the application database and user
-	if err := createApplicationDatabase(); err != nil {
+	if err := createApplicationUser(); err != nil {
 		return fmt.Errorf("failed to create application database and user: %v", err)
 	}
-	if err := createApplicationUser(); err != nil {
+	if err := createApplicationDatabase(); err != nil {
 		return fmt.Errorf("failed to create application database and user: %v", err)
 	}
 	
