@@ -88,6 +88,24 @@ jobs:
           asset_path: ./release.zip
           asset_name: ${{ matrix.binary_name }}.zip
           asset_content_type: application/zip
+  version_file:
+    name: Generate version.json file
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate version.json
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "{\"version\": \"${VERSION}\"}" > version.json
+      - name: Upload version.json to release
+        uses: actions/upload-release-asset@v5
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./version.json
+          asset_name: version.json
+          asset_content_type: application/json
 
   docker:
     name: Build and Push Docker Image

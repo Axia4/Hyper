@@ -275,7 +275,7 @@ const MyStoreLocal = {
 			? 'images/logo.png' : `data:image;base64,${state.companyLogo}`,
 		
 		customLogoUrl:(state) => !state.activated || state.companyLogoUrl === ''
-			? 'https://rei3.de/' : state.companyLogoUrl,
+			? 'https://axia4.com/' : state.companyLogoUrl,
 			
 		loginBackground:(state) => state.companyLoginImage === ''
 			? `background-image:url('../images/backgrounds/${state.loginBackground}.webp');`

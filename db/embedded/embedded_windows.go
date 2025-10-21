@@ -95,99 +95,80 @@ func initializeDatabase() error {
 	// Create initdb command
 	cmd := exec.Command(filepath.Join(dbBin, "initdb"),
 		"-D", dbData,
-		"--auth-local=trust", 
+		"--auth-local=trust",
 		"--auth-host=trust",
 		"-E", "UTF8",
 		"--locale=C",
 		"--no-instructions")
-	
+
 	tools.CmdAddSysProgAttrs(cmd)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("LC_MESSAGES=%s", locale))
-	
+
 	// Set up separate process group for clean shutdown
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
 	}
-	
+
 	// Run initdb and capture output
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %v, output: %s", err, string(output))
 	}
-	
+
 	log.Info(log.ContextServer, "Database cluster initialized successfully with initdb")
-	
+
 	// Now we need to start the database temporarily to create the application database and user
-	if err := createApplicationUser(); err != nil {
+	if err := createApplicationDatabaseAndUser(); err != nil {
 		return fmt.Errorf("failed to create application database and user: %v", err)
 	}
-	if err := createApplicationDatabase(); err != nil {
-		return fmt.Errorf("failed to create application database and user: %v", err)
-	}
-	
+
 	return nil
 }
 
-// createApplicationDatabaseAndUser creates the application database and ensures proper user setup
-func createApplicationDatabase() error {
-	// Start the database server temporarily to create the application database
+// createApplicationDatabaseAndUser creates the application database and user
+func createApplicationDatabaseAndUser() error {
+	// Start the database server temporarily to create the application database and user
 	_, err := execWaitFor(dbBinCtl, []string{"start", "-D", dbData,
 		fmt.Sprintf(`-o "-p %d"`, config.File.Db.Port)}, []string{msgStarted}, 30)
 	if err != nil {
 		return fmt.Errorf("failed to start database for setup: %v", err)
 	}
-	
+
 	// Ensure we stop the database when done, even if there's an error
 	defer func() {
 		execWaitFor(dbBinCtl, []string{"stop", "-D", dbData}, []string{msgStopped}, 10)
 	}()
-	
-	// Create the application database and user using psql
-	createDbCmd := exec.Command(filepath.Join(dbBin, "psql"),
-		"-p", fmt.Sprintf("%d", config.File.Db.Port),
-		"-d", "postgres", // Connect to the default postgres database first
-		"-c", "CREATE DATABASE app WITH OWNER = app TEMPLATE = template0 ENCODING = 'UTF8'",
-	)
-	tools.CmdAddSysProgAttrs(createDbCmd)
-	createDbCmd.Env = append(os.Environ(), fmt.Sprintf("LC_MESSAGES=%s", locale))
-	
-	output, err := createDbCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to create application database: %v, output: %s", err, string(output))
-	}
-	
-	log.Info(log.ContextServer, fmt.Sprintf("Application database '%s' created successfully", config.File.Db.Name))
-	return nil
-}
-// createApplicationDatabaseAndUser creates the application database and ensures proper user setup
-func createApplicationUser() error {
-	// Start the database server temporarily to create the application database
-	_, err := execWaitFor(dbBinCtl, []string{"start", "-D", dbData,
-		fmt.Sprintf(`-o "-p %d"`, config.File.Db.Port)}, []string{msgStarted}, 30)
-	if err != nil {
-		return fmt.Errorf("failed to start database for setup: %v", err)
-	}
-	
-	// Ensure we stop the database when done, even if there's an error
-	defer func() {
-		execWaitFor(dbBinCtl, []string{"stop", "-D", dbData}, []string{msgStopped}, 10)
-	}()
-	
-	// Create the application database and user using psql
-	createDbCmd := exec.Command(filepath.Join(dbBin, "psql"),
+
+	// Create the application user first using psql
+	createUserCmd := exec.Command(filepath.Join(dbBin, "psql"),
 		"-p", fmt.Sprintf("%d", config.File.Db.Port),
 		"-d", "postgres", // Connect to the default postgres database first
 		"-c", "CREATE ROLE app WITH LOGIN PASSWORD 'app';",
 	)
-	
+	tools.CmdAddSysProgAttrs(createUserCmd)
+	createUserCmd.Env = append(os.Environ(), fmt.Sprintf("LC_MESSAGES=%s", locale))
+
+	output, err := createUserCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create application user: %v, output: %s", err, string(output))
+	}
+
+	log.Info(log.ContextServer, "Application user 'app' created successfully")
+
+	// Create the application database using psql
+	createDbCmd := exec.Command(filepath.Join(dbBin, "psql"),
+		"-p", fmt.Sprintf("%d", config.File.Db.Port),
+		"-d", "postgres", // Connect to the default postgres database first
+		"-c", fmt.Sprintf("CREATE DATABASE %s WITH OWNER = app TEMPLATE = template0 ENCODING = 'UTF8';", config.File.Db.Name),
+	)
 	tools.CmdAddSysProgAttrs(createDbCmd)
 	createDbCmd.Env = append(os.Environ(), fmt.Sprintf("LC_MESSAGES=%s", locale))
-	
-	output, err := createDbCmd.CombinedOutput()
+
+	output, err = createDbCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to create application database: %v, output: %s", err, string(output))
 	}
-	
+
 	log.Info(log.ContextServer, fmt.Sprintf("Application database '%s' created successfully", config.File.Db.Name))
 	return nil
 }
@@ -219,11 +200,8 @@ func execWaitFor(call string, args []string, waitFor []string, waitTime int) (st
 
 	// react to call timeout
 	go func() {
-		for {
-			<-ctx.Done()
-			chanReturn <- chanReturnType{err: errors.New("timeout reached")}
-			return
-		}
+		<-ctx.Done()
+		chanReturn <- chanReturnType{err: errors.New("timeout reached")}
 	}()
 
 	// react to new lines from standard output
@@ -232,6 +210,13 @@ func execWaitFor(call string, args []string, waitFor []string, waitTime int) (st
 			chanReturn <- chanReturnType{err: err}
 			return
 		}
+
+		// Ensure process cleanup
+		defer func() {
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+		}()
 
 		buf := bufio.NewReader(stdout)
 		bufLines := []string{}
