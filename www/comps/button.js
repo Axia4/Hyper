@@ -13,6 +13,7 @@ const MyButton = {
 		:class="classes"
 		:tabindex="active ? 0 : -1"
 		:title="captionTitle"
+		:style="style !== '' ? style : ''"
 	>
 		<img draggable="false"
 			v-if="image !== '' || imageBase64 !== ''"

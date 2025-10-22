@@ -187,7 +187,7 @@ export default {
 					<slot name="input-icon" />
 					
 					<!-- record actions -->
-					<my-button image="new.png"
+					<my-button image="new.png" style="background-color: green;"
 						v-if="hasCreate"
 						@trigger="$emit('open-form',[],false)"
 						@trigger-middle="$emit('open-form',[],true)"
