@@ -1,0 +1,32 @@
+@media print {
+    #app-mount {
+        height: auto !important;
+        /* allow it to grow naturally */
+    }
+
+    .list-content,
+    .list,
+    .field-content,
+    .field,
+    .fields,
+    .tabs,
+    .form,
+    .form-wrap,
+    .app-content,
+    #app,
+    #app-mount {
+        overflow: visible !important;
+        display: block !important;
+    }
+
+    .menu,
+    .button,
+    .list-header {
+        display: none;
+    }
+
+    .list-table,
+    .list-content {
+        background-color: white !important;
+    }
+}
