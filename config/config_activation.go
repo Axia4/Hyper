@@ -13,7 +13,7 @@ import (
 )
 
 // Activation server configuration
-const activationServerURL = "https://ta-licensing.tech.eus"
+const activationServerURL = "https://license.axia4.net"
 
 // API response structures for activation server
 type PublicKeyResponse struct {
