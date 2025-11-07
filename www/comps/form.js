@@ -185,7 +185,7 @@ export default {
 			<!-- title bar lower -->
 			<div class="top lower nowrap" v-if="hasBarLower">
 				<div class="area nowrap">
-					<my-button image="new.png"
+					<my-button image="new.png" style="background-color: green;"
 						v-if="buttonNewShown"
 						@trigger="openNewAsk(false)"
 						@trigger-middle="openNewAsk(true)"

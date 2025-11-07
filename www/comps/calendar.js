@@ -223,7 +223,7 @@ const MyCalendar = {
 		<!-- header -->
 		<div class="top lower">
 			<div class="area nowrap">
-				<my-button image="new.png"
+				<my-button image="new.png" style="background-color: green;"
 					v-if="hasCreate"
 					@trigger="$emit('open-form',[],[],false)"
 					@trigger-middle="$emit('open-form',[],[],true)"
