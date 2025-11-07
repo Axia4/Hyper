@@ -49,7 +49,6 @@ const MyStoreLocal = {
 		},
 		token:'',                // JWT token
 		tokenKeep:false,         // keep JWT token between sessions
-		valueDrafts:{},          // field value drafts by form ID, for recovery after connection loss
 		widgetFlow:'column',     // direction of widget groups (column, row)
 		widgetWidth:1600         // max. width of widget groups
 	},
@@ -239,28 +238,6 @@ const MyStoreLocal = {
 			state.tokenKeep = payload;
 			set('tokenKeep',payload);
 		},
-		valueDraftsClear(state,payload) {
-			state.valueDrafts = {};
-			set('valueDrafts',state.valueDrafts);
-		},
-		valueDraftsRemove(state,payload) {
-			// remove draft for specific form and record combination
-			const key = `${payload.formId}_${payload.recordIds.join('_')}`;
-			if(state.valueDrafts[key] !== undefined) {
-				delete state.valueDrafts[key];
-				set('valueDrafts',state.valueDrafts);
-			}
-		},
-		valueDraftsSet(state,payload) {
-			// save draft for specific form and record combination
-			const key = `${payload.formId}_${payload.recordIds.join('_')}`;
-			state.valueDrafts[key] = {
-				recordIds:payload.recordIds,
-				timestamp:Math.floor(Date.now() / 1000),
-				values:payload.values
-			};
-			set('valueDrafts',state.valueDrafts);
-		},
 		widgetFlow(state,payload) {
 			state.widgetFlow = payload;
 			set('widgetFlow',payload);
@@ -307,7 +284,6 @@ const MyStoreLocal = {
 		openIdAuthDetails:  (state) => state.openIdAuthDetails,
 		token:              (state) => state.token,
 		tokenKeep:          (state) => state.tokenKeep,
-		valueDrafts:        (state) => state.valueDrafts,
 		widgetFlow:         (state) => state.widgetFlow,
 		widgetWidth:        (state) => state.widgetWidth
 	}
