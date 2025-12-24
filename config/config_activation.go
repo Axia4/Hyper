@@ -65,7 +65,7 @@ func fetchLicenseFromServer(licenseId string) (*types.License, error) {
 		Timeout: 10 * time.Second,
 	}
 	
-	resp, err := client.Get(activationServerURL + "/api/licenses/" + licenseId)
+	resp, err := client.Get(activationServerURL + "/" + licenseId + ".json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch license: %v", err)
 	}
