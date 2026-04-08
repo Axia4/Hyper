@@ -93,12 +93,6 @@ Contributions welcome! Fork the repository and submit pull requests.
 
 **Versioning**: Axia uses `MAJOR.MINOR.PATCH.BUILD` format (e.g., `3.2.0.4246`). The `main` branch contains the current release. New minor versions use separate branches that merge to `main` upon release.
 
-## Community Projects
-
-- [R3 Toolshop](https://github.com/Umb-Astardo/R3-Toolshop) - Operational tools for data import, bulk user creation, and more
-- [Axia-Tickets-MCP-Server](https://github.com/lgndluke/Axia-Tickets-MCP-Server) - LLM integration for Axia Tickets
-- [Google Material Icons](https://github.com/fmvalsera/r3_material_icons_app) - Material icon pack application
-
 ## Building from Source
 
 ```bash
@@ -136,4 +130,4 @@ Axia is based on r3_team/r3. For trademark issues, open an issue or email: sopor
 The original license permits modifications & commercial versions of the program.
 ---
 
-[![Stargazers](https://reporoster.com/stars/dark/EuskadiTech/Axia)](https://github.com/EuskadiTech/Axia/stargazers)
+[![Stargazers](https://reporoster.com/stars/dark/EuskadiTech/Hyper)](https://github.com/EuskadiTech/Hyper/stargazers)

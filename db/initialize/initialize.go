@@ -203,7 +203,7 @@ func initInstanceValues_tx(ctx context.Context, tx pgx.Tx) error {
 			('tokenExpiryHours','168'),
 			('tokenKeepEnable','1'),
 			('tokenSecret',''),
-			('updateCheckUrl','https://github.com/EuskadiTech/Axia/releases/latest/download/version.json'),
+			('updateCheckUrl','https://github.com/EuskadiTech/Hyper/releases/latest/download/version.json'),
 			('updateCheckVersion','');
 		
 		-- tasks
