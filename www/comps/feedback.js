@@ -119,7 +119,7 @@ export default {
 		module:(s) => !s.form ? false : s.moduleIdMap[s.form.moduleId],
 		
 		// simple
-		isRepoDefault:(s) => s.feedbackUrl === 'https://store.axia4.com',
+		isRepoDefault:(s) => s.feedbackUrl === 'https://store.axia4.net',
 		
 		// stores
 		moduleIdMap:(s) => s.$store.getters['schema/moduleIdMap'],
