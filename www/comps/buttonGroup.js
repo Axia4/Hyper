@@ -10,31 +10,30 @@ const MyButtonGroupPart = {
 		:tabindex="isFirst && !isReadonly ? 0 : -1"
 		:title="captionTitle !== '' ? captionTitle : caption"
 	>
-		<img v-if="image   !== ''" :src="'images/' + image" class="buttonGroup-part-img" />
+		<img v-if="image !== ''" :src="'images/' + image" class="buttonGroup-part-img" />
 		<div v-if="caption !== ''">{{ caption }}</div>
 	</div>`,
 	props:{
-		caption:      { type:String,   required:false, default:'' },
-		captionTitle: { type:String,   required:false, default:'' },
-		isCancel:     { type:Boolean,  required:false, default:false },
-		isFirst:      { type:Boolean,  required:false, default:false },
-		isReadonly:   { type:Boolean,  required:false, default:false },
-		image:        { type:String,   required:false, default:'' },
-		onClickLeft:  { type:Function, required:false },
-		onClickMiddle:{ type:Function, required:false },
-		onClickRight: { type:Function, required:false },
-		onClickShift: { type:Function, required:false }
+		caption:      { type:String,   default:'' },
+		captionTitle: { type:String,   default:'' },
+		isCancel:     { type:Boolean,  default:false },
+		isFirst:      { type:Boolean,  default:false },
+		isReadonly:   { type:Boolean,  default:false },
+		image:        { type:String,   default:'' },
+		onClickLeft:  { type:Function },
+		onClickMiddle:{ type:Function },
+		onClickRight: { type:Function },
+		onClickShift: { type:Function }
 	},
 	methods:{
 		onClick(mode) {
-			if(this.isReadonly)
-				return;
+			if (this.isReadonly) return;
 
 			switch(mode) {
-				case 'left':   if(this.onClickLeft   !== undefined) this.onClickLeft();   break;
-				case 'middle': if(this.onClickMiddle !== undefined) this.onClickMiddle(); break;
-				case 'right':  if(this.onClickRight  !== undefined) this.onClickRight();  break;
-				case 'shift':  if(this.onClickShift  !== undefined) this.onClickShift();  break;
+				case 'left':   this.onClickLeft?.();   break;
+				case 'middle': this.onClickMiddle?.(); break;
+				case 'right':  this.onClickRight?.();  break;
+				case 'shift':  this.onClickShift?.();  break;
 			}
 		}
 	}
@@ -42,9 +41,14 @@ const MyButtonGroupPart = {
 
 export default {
 	components:{ MyButtonGroupPart },
-	template: `<div class="buttonGroup" :class="{ anyClickable, cancel:allCancel }">
+	template: `<div
+		class="buttonGroup"
+		:class="{ anyClickable, cancel: allCancel }"
+		:style="customStyle !== '' ? customStyle : ''"
+	>
 		<my-button-group-part
 			v-for="(g,i) in group"
+			:key="i"
 			:caption="g.caption"
 			:captionTitle="g.captionTitle"
 			:image="g.image"
@@ -58,11 +62,19 @@ export default {
 		/>
 	</div>`,
 	props:{
-		group:{ type:Array, required:true }
+		group: { type:Array, required:true },
+		customStyle: {
+			type: [String, Object, Array], // Compatible con la sintaxis de Vue
+			default: ''
+		}
 	},
 	emits:[],
 	computed:{
-		allCancel:   (s) => s.group.filter(v => v.isCancel   === undefined || v.isCancel).length === s.group.length,
-		anyClickable:(s) => s.group.filter(v => v.isReadonly === undefined || !v.isReadonly).length > 0
+		allCancel() {
+			return this.group.filter(v => v.isCancel === undefined || v.isCancel).length === this.group.length;
+		},
+		anyClickable() {
+			return this.group.filter(v => v.isReadonly === undefined || !v.isReadonly).length > 0;
+		}
 	}
 };
