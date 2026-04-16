@@ -193,7 +193,7 @@ export default {
 						:caption="layoutElements.includes('dataActionLabels') ? capGen.button.new : ''"
 						:captionTitle="capGen.button.newHint"
 					/>
-					<my-button-group customStyle="--action-color: green;"
+					<my-button-group customStyle="--color-action: purple"
 						v-if="buttonSaveShown"
 						:group="buttonGroupSave"
 					/>
