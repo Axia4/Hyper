@@ -1,7 +1,6 @@
 import {srcBase64} from '../shared/image.js';
-export {MyBuilderCollections as default};
 
-let MyBuilderCollections = {
+export default {
 	name:'my-builder-collections',
 	template:`<div class="builder-collections contentBox grow">
 		<div class="top lower">
@@ -55,6 +54,7 @@ let MyBuilderCollections = {
 			</div>
 		</div>
 	</div>`,
+	emits:['createNew'],
 	props:{
 		id:      { type:String,  required:true },
 		readonly:{ type:Boolean, required:true }
@@ -65,13 +65,13 @@ let MyBuilderCollections = {
 		};
 	},
 	computed:{
-		module:(s) => typeof s.moduleIdMap[s.id] === 'undefined' ? false : s.moduleIdMap[s.id],
+		module:s => s.moduleIdMap[s.id] === undefined ? false : s.moduleIdMap[s.id],
 		
 		// stores
-		moduleIdMap:(s) => s.$store.getters['schema/moduleIdMap'],
-		iconIdMap:  (s) => s.$store.getters['schema/iconIdMap'],
-		capApp:     (s) => s.$store.getters.captions.builder.collection,
-		capGen:     (s) => s.$store.getters.captions.generic
+		moduleIdMap:s => s.$store.getters['schema/moduleIdMap'],
+		iconIdMap:  s => s.$store.getters['schema/iconIdMap'],
+		capApp:     s => s.$store.getters.captions.builder.collection,
+		capGen:     s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals

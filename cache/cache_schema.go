@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"r3/config/module_meta"
+	"r3/handler"
 	"r3/log"
 	"r3/schema/api"
 	"r3/schema/article"
 	"r3/schema/attribute"
 	"r3/schema/clientEvent"
 	"r3/schema/collection"
+	"r3/schema/doc"
 	"r3/schema/form"
 	"r3/schema/icon"
 	"r3/schema/jsFunction"
@@ -31,6 +33,7 @@ import (
 	"r3/schema/widget"
 	"r3/tools"
 	"r3/types"
+	"slices"
 	"sync"
 
 	"github.com/gofrs/uuid"
@@ -54,9 +57,15 @@ var (
 	RoleIdMap          = make(map[uuid.UUID]types.Role)        // all roles by ID
 	PgFunctionIdMap    = make(map[uuid.UUID]types.PgFunction)  // all PG functions by ID
 	ApiIdMap           = make(map[uuid.UUID]types.Api)         // all APIs by ID
+	DocIdMap           = make(map[uuid.UUID]types.Doc)         // all documents by ID
 	ClientEventIdMap   = make(map[uuid.UUID]types.ClientEvent) // all client events by ID
 )
 
+func GetClientEventIdMap() map[uuid.UUID]types.ClientEvent {
+	Schema_mx.RLock()
+	defer Schema_mx.RUnlock()
+	return ClientEventIdMap
+}
 func GetModuleIdMapMeta() map[uuid.UUID]types.ModuleMeta {
 	Schema_mx.RLock()
 	defer Schema_mx.RUnlock()
@@ -72,6 +81,37 @@ func GetModuleCacheJson(moduleId uuid.UUID) (json.RawMessage, error) {
 	}
 	return json, nil
 }
+
+// overwrites language code with primary language of module if it´s not supported by module
+func GetModuleLanguageCodeValid(moduleId uuid.UUID, languageCode string) (string, error) {
+	Schema_mx.RLock()
+	defer Schema_mx.RUnlock()
+
+	if _, exists := ModuleIdMap[moduleId]; !exists {
+		return "", handler.ErrSchemaUnknownModule(moduleId)
+	}
+
+	if !slices.Contains(ModuleIdMap[moduleId].Languages, languageCode) {
+		languageCode = ModuleIdMap[moduleId].LanguageMain
+	}
+	return languageCode, nil
+}
+
+func GetApiByNames(modName, apiName string, apiVersion int) (types.Api, error) {
+	Schema_mx.RLock()
+	defer Schema_mx.RUnlock()
+
+	apiId, exists := ModuleApiNameMapId[modName][fmt.Sprintf("%s.v%d", apiName, apiVersion)]
+	if !exists {
+		return types.Api{}, fmt.Errorf("API '%s.%s' (v%d) does not exist", modName, apiName, apiVersion)
+	}
+	api, exists := ApiIdMap[apiId]
+	if !exists {
+		return types.Api{}, handler.ErrSchemaUnknownApi(apiId)
+	}
+	return api, nil
+}
+
 func LoadModuleIdMapMeta_tx(ctx context.Context, tx pgx.Tx) error {
 	moduleIdMapMetaNew, err := module_meta.GetIdMap_tx(ctx, tx)
 	if err != nil {
@@ -81,7 +121,7 @@ func LoadModuleIdMapMeta_tx(ctx context.Context, tx pgx.Tx) error {
 	defer Schema_mx.Unlock()
 
 	// apply deletions if relevant
-	for id, _ := range moduleIdMapMeta {
+	for id := range moduleIdMapMeta {
 		if _, exists := moduleIdMapMetaNew[id]; !exists {
 			delete(ModuleIdMap, id)
 			delete(moduleIdMapJson, id)
@@ -133,9 +173,11 @@ func UpdateSchema_tx(ctx context.Context, tx pgx.Tx, moduleIds []uuid.UUID, init
 	}
 
 	// update module meta cache
-	Schema_mx.Lock()
 	for _, id := range moduleIds {
+		Schema_mx.RLock()
 		meta, exists := moduleIdMapMeta[id]
+		Schema_mx.RUnlock()
+
 		if !exists {
 			meta, err = module_meta.Get_tx(ctx, tx, id)
 			if err != nil {
@@ -143,9 +185,11 @@ func UpdateSchema_tx(ctx context.Context, tx pgx.Tx, moduleIds []uuid.UUID, init
 			}
 		}
 		meta.DateChange = now
+
+		Schema_mx.Lock()
 		moduleIdMapMeta[id] = meta
+		Schema_mx.Unlock()
 	}
-	Schema_mx.Unlock()
 	return nil
 }
 
@@ -172,6 +216,7 @@ func updateSchemaCache_tx(ctx context.Context, tx pgx.Tx, moduleIds []uuid.UUID)
 		mod.JsFunctions = make([]types.JsFunction, 0)
 		mod.Collections = make([]types.Collection, 0)
 		mod.Apis = make([]types.Api, 0)
+		mod.Docs = make([]types.Doc, 0)
 		mod.ClientEvents = make([]types.ClientEvent, 0)
 		mod.SearchBars = make([]types.SearchBar, 0)
 		mod.Variables = make([]types.Variable, 0)
@@ -313,6 +358,17 @@ func updateSchemaCache_tx(ctx context.Context, tx pgx.Tx, moduleIds []uuid.UUID)
 		for _, a := range mod.Apis {
 			ApiIdMap[a.Id] = a
 			ModuleApiNameMapId[mod.Name][fmt.Sprintf("%s.v%d", a.Name, a.Version)] = a.Id
+		}
+
+		// get documents
+		log.Info(log.ContextCache, "load documents")
+
+		mod.Docs, err = doc.Get_tx(ctx, tx, mod.Id, []uuid.UUID{})
+		if err != nil {
+			return err
+		}
+		for _, d := range mod.Docs {
+			DocIdMap[d.Id] = d
 		}
 
 		// get client events

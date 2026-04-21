@@ -6,28 +6,29 @@ import (
 	"r3/config"
 	"r3/handler"
 
+	"github.com/gofrs/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func SendFeedback(isAdmin bool, moduleRelated bool, moduleId pgtype.UUID,
-	formId pgtype.UUID, mood int, code int, text string) error {
-
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
+func SendFeedback(isAdmin bool, moduleRelated bool, repoId uuid.UUID, moduleId pgtype.UUID, formId pgtype.UUID, mood int, code int, text string) error {
 
 	releaseBuild := 0
 	if moduleId.Valid {
+		cache.Schema_mx.RLock()
 		module, exists := cache.ModuleIdMap[moduleId.Bytes]
+		cache.Schema_mx.RUnlock()
+
 		if !exists {
 			return handler.ErrSchemaUnknownModule(moduleId.Bytes)
 		}
 		releaseBuild = module.ReleaseBuild
 	}
 
-	baseUrl := config.GetString("repoUrl")
-
-	// get authentication token
-	token, err := getToken(baseUrl)
+	repo, err := cache.GetRepoById(repoId)
+	if err != nil {
+		return err
+	}
+	token, err := httpGetAuthToken(repo.Url, repo.FetchUserName, repo.FetchUserPass, repo.SkipVerify)
 	if err != nil {
 		return err
 	}
@@ -63,6 +64,6 @@ func SendFeedback(isAdmin bool, moduleRelated bool, moduleId pgtype.UUID,
 		},
 	}
 
-	var res interface{}
-	return httpCallPost(token, fmt.Sprintf("%s/api/lsw_repo/feedback/v1", baseUrl), req, &res)
+	var res any
+	return httpCallPost(token, fmt.Sprintf("%s/api/lsw_repo/feedback/v1", repo.Url), repo.SkipVerify, req, &res)
 }

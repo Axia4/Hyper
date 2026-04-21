@@ -1,6 +1,6 @@
 import {isAttributeRelationship} from './attribute.js';
 import {
-	getJoinIndexMap,
+	getJoinsIndexMap,
 	getQueryExpressions,
 	getQueryFiltersProcessed,
 	getRelationsJoined
@@ -56,7 +56,7 @@ export function getJsFunctionsProcessed(fncs,filter) {
 	let formIdMap = MyStore.getters['schema/formIdMap'];
 	filter        = filter.toLowerCase();
 	
-	for(let fnc of fncs) {
+	for(const fnc of fncs) {
 		if(filter !== '') {
 			if(fnc.formId === null && !fnc.name.toLowerCase().includes(filter))
 				continue;
@@ -72,8 +72,12 @@ export function getJsFunctionsProcessed(fncs,filter) {
 		else                    outForm.push(fnc);
 	}
 	
-	// sort by form name
-	outForm.sort((a,b) => (formIdMap[a.formId].name > formIdMap[b.formId].name) ? 1 : -1);
+	// sort by form name, then by function name
+	outForm.sort((a,b) => {
+		const prioFormName = formIdMap[a.formId].name.localeCompare(formIdMap[b.formId].name);
+		const prioFncName  = a.name.localeCompare(b.name);
+		return prioFormName || prioFncName;
+	});
 	
 	// order: generic then functions assigned to a form
 	return outGlobal.concat(outForm);
@@ -81,15 +85,6 @@ export function getJsFunctionsProcessed(fncs,filter) {
 
 export function getDependentModules(moduleSource) {
 	return MyStore.getters['schema/modules'].filter(v => v.id === moduleSource.id || moduleSource.dependsOn.includes(v.id));
-};
-
-export function getDependentRelations(moduleSource) {
-	const modules = getDependentModules(moduleSource);
-	let rels = [];
-	for(const mod of modules) {
-		rels = rels.concat(mod.relations);
-	}
-	return rels;
 };
 
 export function getDependentAttributes(moduleSource) {
@@ -101,6 +96,24 @@ export function getDependentAttributes(moduleSource) {
 		}
 	}
 	return atrs;
+};
+
+export function getDependentDocs(moduleSource) {
+	const modules = getDependentModules(moduleSource);
+	let docs = [];
+	for(const mod of modules) {
+		docs = docs.concat(mod.docs);
+	}
+	return docs;
+};
+
+export function getDependentRelations(moduleSource) {
+	const modules = getDependentModules(moduleSource);
+	let rels = [];
+	for(const mod of modules) {
+		rels = rels.concat(mod.relations);
+	}
+	return rels;
 };
 
 export function getFunctionHelp(functionPrefix,functionObj,builderLanguage) {
@@ -130,7 +143,7 @@ export function getSqlPreview(query,columns) {
 		relationId:query.relationId,
 		joins:getRelationsJoined(query.joins),
 		expressions:getQueryExpressions(columns),
-		filters:getQueryFiltersProcessed(query.filters,getJoinIndexMap(query.joins)),
+		filters:getQueryFiltersProcessed(query.filters,getJoinsIndexMap(query.joins)),
 		orders:query.orders,
 		limit:query.fixedLimit !== 0 ? query.fixedLimit : 0
 	},true).then(
@@ -183,7 +196,7 @@ export function getItemTitle(attributeId,index,outsideIn,attributeIdNm) {
 	let atr = MyStore.getters['schema/attributeIdMap'][attributeId];
 	let rel = MyStore.getters['schema/relationIdMap'][atr.relationId];
 	
-	if(isAttributeRelationship(atr.content) && typeof attributeIdNm !== 'undefined' && attributeIdNm !== null) {
+	if(isAttributeRelationship(atr.content) && attributeIdNm !== undefined && attributeIdNm !== null) {
 		let atrNm = MyStore.getters['schema/attributeIdMap'][attributeIdNm];
 		return `${index} ${rel.name}.${atr.name} -> ${atrNm.name}`;
 	}

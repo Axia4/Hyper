@@ -265,7 +265,7 @@
 	filter:var(--image-filter);
 }
 .widget .system-module-menu .children{
-	margin-left:16px;
+	margin-left:6px;
 }
 
 .widget .system-module-menu .watermark{

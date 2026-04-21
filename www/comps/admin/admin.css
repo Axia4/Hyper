@@ -376,10 +376,6 @@
 .admin-modules .message.error{
 	color:var(--color-error);
 }
-.admin-modules-file img,
-.admin-modules-file h1{
-	margin:0px 9px 0px 0px !important;
-}
 .admin-modules-help{
 	max-width:1100px;
 	min-width:400px;
@@ -390,6 +386,16 @@
 }
 .admin-modules-help.large{
 	max-width:1600px;
+}
+
+.admin-repo{
+	width:100%;
+	max-width:600px;
+	min-width:300px;
+}
+
+.admin-repo-keys-table{
+	max-width:500px;
 }
 
 
@@ -413,12 +419,12 @@
 
 
 /* repo */
-.admin-repo .repo-empty{
+.admin-repo-install .repo-empty{
 	width:100%;
 	margin:30px 0px;
 	text-align:center;
 }
-.admin-repo .repo-module{
+.admin-repo-install .repo-module{
 	display:flex;
 	flex-flow:row nowrap;
 	max-width:1200px;
@@ -429,42 +435,42 @@
 	background-color:var(--color-bright);
 	overflow:hidden;
 }
-.admin-repo .repo-module .part{
+.admin-repo-install .repo-module .part{
 	display:flex;
 	flex-flow:column nowrap;
 }
-.admin-repo .repo-module .bad-state{
+.admin-repo-install .repo-module .bad-state{
 	color:var(--color-error);
 }
-.admin-repo .repo-module .part .title{
+.admin-repo-install .repo-module .part .title{
 	display:flex;
 	flex-flow:row wrap;
 	justify-content:space-between;
 	margin-bottom:6px;
 	border-bottom:1px solid var(--color-border);
 }
-.admin-repo .repo-module .part .description{
+.admin-repo-install .repo-module .part .description{
 	max-width:800px;
 	max-height:200px;
 	overflow-y:auto;
 }
-.admin-repo .repo-module .part .author{
+.admin-repo-install .repo-module .part .author{
 	text-indent:3px;
 }
-.admin-repo .repo-module .part .actions-box{
+.admin-repo-install .repo-module .part .actions-box{
 	margin-top:8px;
 	display:flex;
 	flex-flow:column nowrap;
 	align-items:flex-start;
 }
-.admin-repo .repo-module .part.left{
+.admin-repo-install .repo-module .part.left{
 	flex:3 1 900px;
 	min-width:500px;
 	padding:12px;
 	padding-right:18px;
 	line-height:150%;
 }
-.admin-repo .repo-module .part.right{
+.admin-repo-install .repo-module .part.right{
 	padding:12px 16px;
 	line-height:150%;
 	font-size:110%;
@@ -482,12 +488,12 @@
 	display:flex;
 	flex-flow:column nowrap;
 }
-.admin-logs-settings{
-	margin:16px;
-}
 .admin-logs-table{
 	flex:1 1 auto;
 	overflow:auto;
+}
+.admin-log-options{
+	width:800px;
 }
 
 
@@ -535,10 +541,6 @@
 	gap:6px;
 	padding:2px 5px;
 	position:relative;
-}
-.admin-roles .admin-role-members .entry:focus,
-.admin-roles .admin-role-members .entry:hover{
-	background-color:var(--color-accent3);
 }
 .admin-roles .admin-role input{
 	flex:1 1 auto;

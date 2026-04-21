@@ -1,7 +1,7 @@
 import MyBuilderField from './builderField.js';
-export {MyBuilderFields as default};
+import {getUuidV4}    from '../shared/crypto.js';
 
-let MyBuilderFields = {
+export default {
 	name:'my-builder-fields',
 	components:{ MyBuilderField },
 	template:`<draggable class="builder-fields" handle=".dragAnchor" animation="100" itemKey="id"
@@ -13,48 +13,45 @@ let MyBuilderFields = {
 	>
 		<template #item="{element,index}">
 			<my-builder-field
-				@column-id-show="(...args) => $emit('column-id-show',...args)"
-				@field-counter-set="$emit('field-counter-set',$event)"
-				@field-id-show="(...args) => $emit('field-id-show',...args)"
-				@field-move="(...args) => moveByClick(args[0],index,args[1])"
+				@createNew="(...args) => $emit('createNew',...args)"
+				@field-id-show="$emit('field-id-show',$event)"
+				@field-move="(...args) => moveByClick(args[0],index,args[1],isTemplate)"
 				@field-remove="$emit('field-remove',$event)"
 				@field-move-store="$emit('field-move-store',$event)"
 				@field-property-set="(...args) => fields[index][args[0]] = args[1]"
-				:builderLanguage="builderLanguage"
-				:columnIdShow="columnIdShow"
-				:dataFields="dataFields"
-				:entityIdMapRef="entityIdMapRef"
+				:builderLanguage
+				:dataFields
+				:elmOptions
+				:entityIdMapRef
 				:field="element"
-				:fieldCounter="fieldCounter"
-				:fieldIdShow="fieldIdShow"
-				:fieldIdShowTab="fieldIdShowTab"
-				:fieldMoveIndex="fieldMoveIndex"
-				:fieldMoveList="fieldMoveList"
-				:filterData="filterData"
-				:filterData1n="filterData1n"
-				:filterDataIndex="filterDataIndex"
-				:filterDataN1="filterDataN1"
-				:filterDataNm="filterDataNm"
-				:flexDirParent="flexDirParent"
-				:formId="formId"
-				:isTemplate="isTemplate"
-				:joinsIndexMap="joinsIndexMap"
-				:moduleId="moduleId"
-				:noMovement="noMovement"
-				:showColumnsAll="showColumnsAll"
-				:uiScale="uiScale"
+				:fieldIdMap
+				:fieldIdShow
+				:fieldMoveIndex
+				:fieldMoveList
+				:filterData
+				:filterData1n
+				:filterDataIndex
+				:filterDataN1
+				:filterDataNm
+				:flexDirParent
+				:formId
+				:isTemplate
+				:joinsIndexMap
+				:moduleId
+				:noMovement
+				:readonly
+				:uiScale
 			/>
 		</template>
 	</draggable>`,
 	props:{
 		builderLanguage:{ type:String,  required:true },
-		columnIdShow:   { required:false, default:null },
 		dataFields:     { type:Array,   required:false, default:() => [] },
+		elmOptions:     { required:true },
 		entityIdMapRef: { type:Object,  required:false, default:() => {return {}} },
 		fields:         { type:Array,   required:true },
-		fieldCounter:   { type:Number,  required:true },
+		fieldIdMap:     { type:Object,  required:true },
 		fieldIdShow:    { required:false, default:null },
-		fieldIdShowTab: { type:String,  required:false, default:'' },
 		fieldMoveList:  { required:true },
 		fieldMoveIndex: { type:Number,  required:true },
 		filterData:     { type:Boolean, required:false, default:false },
@@ -66,29 +63,28 @@ let MyBuilderFields = {
 		formId:         { type:String,  required:true },
 		isTemplate:     { type:Boolean, required:true }, // is template for fields
 		joinsIndexMap:  { type:Object,  required:false, default:() => {return {}} },
-		moduleId:       { type:String,  required:false, default:'' },
+		moduleId:       { type:String,  required:true },
 		noMovement:     { type:Boolean, required:false, default:false },
-		showColumnsAll: { type:Boolean, required:false, default:false },
+		readonly:       { type:Boolean, required:true },
 		uiScale:        { type:Number,  required:false, default:100 }
 	},
-	emits:['column-id-show','field-counter-set','field-id-show','field-remove','field-move-store'],
+	emits:['createNew','field-id-show','field-remove','field-move-store'],
 	data() {
 		return {
 			clone:false
 		};
 	},
 	computed:{
-		fieldCounterInput:{
-			get()  { return this.fieldCounter; },
-			set(v) { this.$emit('field-counter-set',v); }
-		},
-		moveActive:(s) => s.fieldMoveList !== null
+		moveActive:s => s.fieldMoveList !== null
 	},
 	methods:{
+		// externals
+		getUuidV4,
+
 		cloneField(field) {
 			// generate copy of field with unique ID
 			let fieldNew = JSON.parse(JSON.stringify(field));
-			fieldNew.id = 'new_'+this.fieldCounterInput++;
+			fieldNew.id = this.getUuidV4();
 			return fieldNew;
 		},
 		
@@ -103,7 +99,7 @@ let MyBuilderFields = {
 		// move field by clicking on it in original fields list (source)
 		//  and then clicking on a field in another fields list (target)
 		// actual move happens in step 2 and is in context of target list
-		moveByClick(fieldList,fieldIndex,moveToParent) {
+		moveByClick(fieldList,fieldIndex,moveToParent,isFromTemplate) {
 			if(fieldList === null)
 				fieldList = this.fields;
 			
@@ -126,17 +122,11 @@ let MyBuilderFields = {
 			}
 			
 			// move field from old (stored) element to clicked on element
-			let isFromTemplate = fieldStored.id.startsWith('template_');
+			if(isFromTemplate) fieldStored = this.cloneField(fieldStored);
+			else               this.fieldMoveList.splice(this.fieldMoveIndex,1);
 			
-			if(isFromTemplate)
-				fieldStored = this.cloneField(fieldStored);
-			else
-				this.fieldMoveList.splice(this.fieldMoveIndex,1);
-			
-			if(moveToParent)
-				fieldList.splice(fieldIndex,0,fieldStored);
-			else
-				fieldList.splice(fieldIndex+1,0,fieldStored);
+			if(moveToParent) fieldList.splice(fieldIndex,0,fieldStored);
+			else             fieldList.splice(fieldIndex+1,0,fieldStored);
 			
 			this.$emit('field-move-store',{fieldList:null,fieldIndex:0});
 		},

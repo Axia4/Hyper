@@ -1,23 +1,23 @@
-import MyBuilderCaption    from './builderCaption.js';
-import MyBuilderPgTriggers from './builderPgTriggers.js';
-import MyCodeEditor        from '../codeEditor.js';
-import MyTabs              from '../tabs.js';
+import MyBuilderCaption                from './builderCaption.js';
+import MyBuilderPgTriggers             from './builderPgTriggers.js';
+import MyCodeEditor                    from '../codeEditor.js';
+import {getTemplatePgFunctionSchedule} from '../shared/builderTemplate.js';
+import {dialogDeleteAsk}               from '../shared/dialog.js';
 import {
 	getAttributeIcon,
 	isAttributeFiles
 }  from '../shared/attribute.js';
 import {
-	copyValueDialog,
-	getNilUuid
-} from '../shared/generic.js';
-import {
 	getDependentModules,
 	getFunctionHelp,
 	getValidDbCharsForRx
 } from '../shared/builder.js';
-export {MyBuilderPgFunction as default};
+import {
+	copyValueDialog,
+	deepIsEqual
+} from '../shared/generic.js';
 
-let MyBuilderPgFunctionItemSchedule = {
+const MyBuilderPgFunctionItemSchedule = {
 	name:'my-builder-pg-function-item-schedule',
 	template:`<div class="schedule">
 		
@@ -123,25 +123,24 @@ let MyBuilderPgFunctionItemSchedule = {
 	}
 };
 
-let MyBuilderPgFunction = {
+export default {
 	name:'my-builder-pg-function',
 	components:{
 		MyBuilderCaption,
 		MyBuilderPgFunctionItemSchedule,
 		MyBuilderPgTriggers,
-		MyCodeEditor,
-		MyTabs
+		MyCodeEditor
 	},
-	template:`<div class="builder-function">
-		<div class="contentBox left" v-if="pgFunction">
+	template:`<div class="builder-function" v-if="fnc !== false">
+		<div class="contentBox left">
 			<div class="top">
 				<div class="area nowrap">
 					<img class="icon" src="images/codeDatabase.png" />
-					<h1 class="title">{{ capApp.titlePgOne.replace('{NAME}',name) }}</h1>
+					<h1 class="title">{{ capApp.titlePgOne.replace('{NAME}',fnc.name) }}</h1>
 				</div>
 				<div class="area">
 					<my-builder-caption
-						v-model="captions.pgFunctionTitle"
+						v-model="fnc.captions.pgFunctionTitle"
 						:contentName="capGen.title"
 						:language="builderLanguage"
 						:longInput="true"
@@ -158,12 +157,12 @@ let MyBuilderPgFunction = {
 				<div class="area nowrap">
 					<my-button image="save.png"
 						@trigger="set"
-						:active="hasChanges && !readonly"
+						:active="isChanged && !readonly"
 						:caption="capGen.button.save"
 					/>
 					<my-button image="refresh.png"
-						@trigger="reset"
-						:active="hasChanges"
+						@trigger="reset(true)"
+						:active="isChanged"
 						:caption="capGen.button.refresh"
 					/>
 					<my-button
@@ -174,11 +173,11 @@ let MyBuilderPgFunction = {
 				</div>
 				<div class="area nowrap">
 					<my-button image="visible1.png"
-						@trigger="copyValueDialog(name,id,id)"
+						@trigger="copyValueDialog(fnc.name,id,id)"
 						:caption="capGen.id"
 					/>
 					<my-button image="delete.png"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!readonly"
 						:cancel="true"
 						:caption="capGen.button.delete"
@@ -189,7 +188,7 @@ let MyBuilderPgFunction = {
 			
 			<div class="content no-padding function-details">
 				<my-code-editor mode="pgsql"
-					v-model="codeFunction"
+					v-model="fncBody"
 					@clicked="entityId = null"
 					:insertEntity="insertEntity"
 					:modelValueAlt="!showPreview ? '' : preview"
@@ -199,7 +198,7 @@ let MyBuilderPgFunction = {
 		</div>
 		
 		<!-- sidebar -->
-		<div class="contentBox sidebar right" v-if="pgFunction && showSidebar">
+		<div class="contentBox sidebar right" v-if="showSidebar">
 			<div class="top lower">
 				<div class="area nowrap">
 					<h1 class="title">{{ capGen.settings }}</h1>
@@ -218,14 +217,14 @@ let MyBuilderPgFunction = {
 				<template v-if="tabTarget === 'content'">
 					<div class="row gap">
 						<my-button
-							v-if="isTrigger"
+							v-if="fnc.isTrigger"
 							@trigger="addNew = !addNew"
 							:active="!readonly"
 							:caption="capApp.button.addNew"
 							:image="addNew ? 'checkbox1.png' : 'checkbox0.png'"
 						/>
 						<my-button
-							v-if="isTrigger"
+							v-if="fnc.isTrigger"
 							@trigger="addOld = !addOld"
 							:active="!readonly"
 							:caption="capApp.button.addOld"
@@ -431,6 +430,64 @@ let MyBuilderPgFunction = {
 							</div>
 						</div>
 					</div>
+					
+					<!-- documents -->
+					<div class="entities-title">
+						<my-button
+							@trigger="showHolderDoc = !showHolderDoc"
+							:caption="capApp.placeholderDoc"
+							:images="[showHolderDoc ? 'triangleDown.png' : 'triangleRight.png','document.png']"
+							:large="true"
+							:naked="true"
+						/>
+						<div class="row centered gap">
+							<template v-if="showHolderDoc">
+								<input class="short" v-model="holderDocText" :placeholder="capGen.threeDots" :title="capGen.button.filter" />
+								<select class="dynamic" v-model="holderDocModuleId">
+									<option v-for="m in modulesDoc" :value="m.id">{{ m.name }}</option>
+								</select>
+							</template>
+							<my-button image="question.png"
+								@trigger="showHelp(capApp.placeholderDoc,capApp.placeholderDocHelp)"
+							/>
+						</div>
+					</div>
+					<div class="entities" v-if="showHolderDoc">
+						<template v-for="mod in modulesDoc.filter(v => holderDocModuleId === null || holderDocModuleId === v.id)">
+							<div class="entity" v-for="doc in mod.docs.filter(v => !v.isTrigger && (holderDocText === '' || v.name.toLowerCase().includes(holderDocText.toLowerCase())))">
+								<div class="entity-title">
+									<div class="row gap centered grow">
+										<my-button
+											@trigger="toggleDocShow(doc.id)"
+											:image="holderDocIdsOpen.includes(doc.id) ? 'triangleDown.png' : 'triangleRight.png'"
+											:naked="true"
+											:caption="doc.name"
+										/>
+									</div>
+
+									<div class="row gap centered">
+										<router-link :key="doc.id" :to="'/builder/doc/'+doc.id">
+											<my-button image="open.png" :captionTitle="capGen.button.open" :naked="true" />
+										</router-link>
+									</div>
+								</div>
+								<div class="entity-children" v-if="holderDocIdsOpen.includes(doc.id)">
+									<my-button
+										@trigger="selectEntity('docAttach',doc.id)"
+										:caption="capGen.button.attach"
+										:image="radioIcon('docAttach',doc.id)"
+										:naked="true"
+									/>
+									<my-button
+										@trigger="selectEntity('docExport',doc.id)"
+										:caption="capGen.button.export"
+										:image="radioIcon('docExport',doc.id)"
+										:naked="true"
+									/>
+								</div>
+							</div>
+						</template>
+					</div>
 				</template>
 				
 				<template v-if="tabTarget === 'exec'">
@@ -471,13 +528,13 @@ let MyBuilderPgFunction = {
 					<tbody>
 						<tr>
 							<td>{{ capGen.name }}</td>
-							<td><input v-model="name" :disabled="readonly" /></td>
+							<td><input v-model="fnc.name" :disabled="readonly" /></td>
 						</tr>
 						<tr>
 							<td>{{ capGen.title }}</td>
 							<td>
 								<my-builder-caption
-									v-model="captions.pgFunctionTitle"
+									v-model="fnc.captions.pgFunctionTitle"
 									:language="builderLanguage"
 									:readonly="readonly"
 								/>
@@ -487,29 +544,29 @@ let MyBuilderPgFunction = {
 							<td>{{ capGen.description }}</td>
 							<td>
 								<my-builder-caption
-									v-model="captions.pgFunctionDesc"
+									v-model="fnc.captions.pgFunctionDesc"
 									:language="builderLanguage"
 									:multiLine="true"
 									:readonly="readonly"
 								/>
 							</td>
 						</tr>
-						<tr v-if="!isTrigger">
+						<tr v-if="!fnc.isTrigger">
 							<td>{{ capApp.codeArgs }}</td>
-							<td><textarea v-model="codeArgs" @keyup="resetExec" :disabled="isTrigger || isLoginSync || readonly" placeholder="-"></textarea></td>
+							<td><textarea v-model="fnc.codeArgs" @input="resetExec" :disabled="fnc.isTrigger || fnc.isLoginSync || readonly" placeholder="-"></textarea></td>
 						</tr>
 						<tr>
 							<td>{{ capApp.codeReturns }}</td>
-							<td><input v-model="codeReturns" :disabled="isTrigger || isLoginSync || readonly" placeholder="-" /></td>
+							<td><input v-model="fnc.codeReturns" :disabled="fnc.isTrigger || fnc.isLoginSync || readonly" placeholder="-" /></td>
 						</tr>
 						<tr>
 							<td>{{ capApp.cost }}</td>
 							<td>
 								<div class="row gap centered">
 									<input type="number"
-										@keyup="updateCost($event.target.value)"
+										@input="updateCost($event.target.value)"
 										:disabled="readonly"
-										:value="cost"
+										:value="fnc.cost"
 									/>
 									<my-button image="question.png"
 										@trigger="showHelp(capApp.cost,capApp.costHelp)"
@@ -517,11 +574,11 @@ let MyBuilderPgFunction = {
 								</div>
 							</td>
 						</tr>
-						<tr v-if="!isTrigger">
+						<tr v-if="!fnc.isTrigger">
 							<td>{{ capApp.volatility }}</td>
 							<td>
 								<div class="row gap centered">
-									<select class="dynamic" v-model="volatility" :disabled="readonly">
+									<select class="dynamic" v-model="fnc.volatility" :disabled="readonly">
 										<option>VOLATILE</option>
 										<option>STABLE</option>
 										<option>IMMUTABLE</option>
@@ -532,7 +589,7 @@ let MyBuilderPgFunction = {
 								</div>
 							</td>
 						</tr>
-						<tr v-if="isTrigger">
+						<tr v-if="fnc.isTrigger">
 							<td>{{ capApp.triggers }}</td>
 							<td>
 								<my-builder-pg-triggers
@@ -543,15 +600,15 @@ let MyBuilderPgFunction = {
 								/>
 							</td>
 						</tr>
-						<tr v-if="isLoginSync">
+						<tr v-if="fnc.isLoginSync">
 							<td>{{ capApp.isLoginSync }}</td>
-							<td><my-bool v-model="isLoginSync" :readonly="true" /></td>
+							<td><my-bool v-model="fnc.isLoginSync" :readonly="true" /></td>
 						</tr>
-						<tr v-if="!isTrigger && !isLoginSync">
+						<tr v-if="!fnc.isTrigger && !fnc.isLoginSync">
 							<td>{{ capApp.isFrontendExec }}</td>
-							<td><my-bool v-model="isFrontendExec" :readonly="isTrigger || readonly" /></td>
+							<td><my-bool v-model="fnc.isFrontendExec" :readonly="fnc.isTrigger || readonly" /></td>
 						</tr>
-						<tr v-if="!isTrigger && !isLoginSync">
+						<tr v-if="!fnc.isTrigger && !fnc.isLoginSync">
 							<td>
 								<div class="column">
 									<span>{{ capApp.schedules }}</span>
@@ -565,9 +622,9 @@ let MyBuilderPgFunction = {
 							</td>
 							<td>
 								<my-builder-pg-function-item-schedule
-									v-for="(s,i) in schedules"
-									v-model="schedules[i]"
-									@remove="schedules.splice(i,1)"
+									v-for="(s,i) in fnc.schedules"
+									v-model="fnc.schedules[i]"
+									@remove="fnc.schedules.splice(i,1)"
 									:key="i"
 									:readonly="readonly"
 								/>
@@ -584,8 +641,8 @@ let MyBuilderPgFunction = {
 		readonly:       { type:Boolean, required:true }
 	},
 	watch:{
-		pgFunction:{
-			handler() { this.reset(); },
+		fncSchema:{
+			handler() { this.reset(false); },
 			immediate:true
 		}
 	},
@@ -593,6 +650,7 @@ let MyBuilderPgFunction = {
 		this.$store.commit('keyDownHandlerAdd',{fnc:this.set,key:'s',keyCtrl:true});
 		
 		// set defaults
+		this.holderDocModuleId      = this.module.id;
 		this.holderFunctionModuleId = this.module.id;
 		this.holderPresetModuleId   = this.module.id;
 		this.holderRelationModuleId = this.module.id;
@@ -603,17 +661,8 @@ let MyBuilderPgFunction = {
 	data() {
 		return {
 			// inputs
-			name:'',
-			captions:{},
-			codeArgs:'',
-			codeFunction:'',
-			codeReturns:'',
-			cost:100,
-			isFrontendExec:false,
-			isLoginSync:false,
-			isTrigger:false,
-			volatility:'VOLATILE',
-			schedules:[],
+			fnc:false,  // function being edited in this component
+			fncCopy:{}, // copy of function from schema when component last reset
 			
 			// execution
 			execArgs:[],
@@ -624,6 +673,8 @@ let MyBuilderPgFunction = {
 			addOld:false,
 			entity:'relation', // selected placeholder entity (relation, attribute, pgFunction, instanceFunction)
 			entityId:null,
+			holderDocIdsOpen:[],         // opened document placeholders (shows methods 'attach', 'export')
+			holderDocText:'',            // text filter for documents
 			holderFunctionModuleId:null, // module filter for backend functions
 			holderFunctionText:'',       // text filter for backend functions
 			holderPresetModuleId:null,   // module filter for presets
@@ -632,13 +683,15 @@ let MyBuilderPgFunction = {
 			holderRelationIdsOpen:[],    // opened relation placeholders (shows attributes)
 			holderRelationText:'',       // text filter for module relations
 			instanceFunctionIds:[
-				'abort_show_message','clean_up_e2ee_keys','file_export','file_export_text','file_import',
-				'file_import_text','file_link','file_text_read','file_text_write','file_unlink','files_get',
+				'abort_show_message','clean_up_e2ee_keys','data_log_comment_create','data_log_delete',
+				'file_export','file_export_text','file_import','file_import_text','file_link',
+				'file_text_read','file_text_read_cb','file_text_write','file_unlink','files_get',
 				'get_e2ee_data_key_enc','get_language_code','get_name','get_public_hostname','get_role_ids',
 				'get_user_id','has_role','has_role_any','log_error','log_info','log_warning','mail_delete',
-				'mail_delete_after_attach','mail_get_next','mail_send','rest_call','update_collection',
-				'user_meta_set','user_sync_all'
+				'mail_delete_after_attach','mail_get_next','mail_send','rest_call','rest_get_placeholder_file_base64',
+				'rest_get_placeholder_file_raw','update_collection','user_meta_set','user_sync_all'
 			],
+			showHolderDoc:false,
 			showHolderFncInstance:false,
 			showHolderFncModule:false,
 			showHolderPreset:false,
@@ -649,16 +702,7 @@ let MyBuilderPgFunction = {
 		};
 	},
 	computed:{
-		hasChanges:(s) => s.name !== s.pgFunction.name
-			|| s.codeArgs        !== s.pgFunction.codeArgs
-			|| s.codeFunction    !== s.placeholdersSet(s.pgFunction.codeFunction)
-			|| s.codeReturns     !== s.pgFunction.codeReturns
-			|| s.isFrontendExec  !== s.pgFunction.isFrontendExec
-			|| s.cost            !== s.pgFunction.cost
-			|| s.volatility      !== s.pgFunction.volatility
-			|| JSON.stringify(s.schedules) !== JSON.stringify(s.pgFunction.schedules)
-			|| JSON.stringify(s.captions)  !== JSON.stringify(s.pgFunction.captions),
-		insertEntity:(s) => {
+		insertEntity:s => {
 			if(s.entityId === null)
 				return null;
 			
@@ -671,10 +715,31 @@ let MyBuilderPgFunction = {
 			// attribute:   (module_name.relation_name.attribute_name)
 			// preset:      {PRESET::module_name.relation_name.preset_name}
 			switch(s.entity) {
-				case 'relation':
-					rel  = s.relationIdMap[s.entityId];
+				case 'attribute':
+					atr  = s.attributeIdMap[s.entityId];
+					rel  = s.relationIdMap[atr.relationId];
 					mod  = s.moduleIdMap[rel.moduleId];
-					text = `{${mod.name}}.[${rel.name}]`;
+					text = `(${mod.name}.${rel.name}.${atr.name})`;
+					
+					if(s.addNew) text = 'NEW.'+text;
+					if(s.addOld) text = 'OLD.'+text;
+				break;
+				case 'docAttach': // fallthrough
+				case 'docExport':
+					const doc = s.docIdMap[s.entityId];
+					mod = s.moduleIdMap[doc.moduleId];
+					const mode = s.entity === 'docAttach' ? 'ATTACH' : 'EXPORT';
+					const help = s.entity === 'docAttach' ? s.capApp.helpPgArgs.pdf_create_attach : s.capApp.helpPgArgs.pdf_create_export;
+					text = `{PDF_CREATE_${mode}::${mod.name}.${doc.name}}(${help})`;
+				break;
+				case 'instanceFunction':
+					args = s.capApp.helpPgArgs[s.entityId] !== undefined ? s.capApp.helpPgArgs[s.entityId].join(', ') : '';
+					text = `instance.${s.entityId}(${args})`;
+				break;
+				case 'pgFunction':
+					fnc  = s.pgFunctionIdMap[s.entityId];
+					mod  = s.moduleIdMap[fnc.moduleId];
+					text = `{${mod.name}}.[${fnc.name}](${fnc.codeArgs})`;
 				break;
 				case 'preset':
 					prs  = s.presetIdMap[s.entityId];
@@ -686,66 +751,64 @@ let MyBuilderPgFunction = {
 						? `{PRESET::${mod.name}.${rel.name}.${prs.name}}`
 						: `instance.get_preset_record_id('${s.entityId}')`;
 				break;
-				case 'pgFunction':
-					fnc  = s.pgFunctionIdMap[s.entityId];
-					mod  = s.moduleIdMap[fnc.moduleId];
-					text = `{${mod.name}}.[${fnc.name}](${fnc.codeArgs})`;
-				break;
-				case 'attribute':
-					atr  = s.attributeIdMap[s.entityId];
-					rel  = s.relationIdMap[atr.relationId];
+				case 'relation':
+					rel  = s.relationIdMap[s.entityId];
 					mod  = s.moduleIdMap[rel.moduleId];
-					text = `(${mod.name}.${rel.name}.${atr.name})`;
-					
-					if(s.addNew) text = 'NEW.'+text;
-					if(s.addOld) text = 'OLD.'+text;
-				break;
-				case 'instanceFunction':
-					args = s.capApp.helpPgArgs[s.entityId] !== undefined ? s.capApp.helpPgArgs[s.entityId].join(', ') : '';
-					text = `instance.${s.entityId}(${args})`;
+					text = `{${mod.name}}.[${rel.name}]`;
 				break;
 			}
 			return text;
 		},
-		tabs:(s) => {
+		tabs:s => {
 			let out = {
 				icons:['images/code.png','images/edit.png'],
 				keys:['content','properties'],
-				labels:[s.capApp.placeholders,s.capGen.properties]
+				labels:[s.capGen.placeholders,s.capGen.properties]
 			};
-			if(!s.isTrigger) {
+			if(!s.fnc.isTrigger) {
 				out.icons.splice(1,0,'images/settingsPlay.png');
 				out.keys.splice(1,0,'exec');
 				out.labels.splice(1,0,s.capApp.exec);
 			}
 			return out;
 		},
+
+		// inputs
+		fncBody:{
+			get()  { return this.placeholdersSet(this.fnc.codeFunction); },
+			set(v) { this.fnc.codeFunction = this.placeholdersUnset(v,false); }
+		},
 		
 		// simple
-		execArgInputs:(s) => s.codeArgs.trim() === '' ? [] : s.codeArgs.split(/,(?=(?:(?:[^']*'){2})*[^']*$)/),
-		module:       (s) => s.pgFunction === false ? false : s.moduleIdMap[s.pgFunction.moduleId],
-		modulesData:  (s) => s.getDependentModules(s.module).filter(v => v.relations.length   !== 0),
-		modulesFnc:   (s) => s.getDependentModules(s.module).filter(v => v.pgFunctions.length !== 0),
-		pgFunction:   (s) => s.pgFunctionIdMap[s.id] === undefined ? false : s.pgFunctionIdMap[s.id],
-		preview:      (s) => !s.showPreview ? '' : s.placeholdersUnset(true),
+		execArgInputs:s => s.fnc.codeArgs.trim() === '' ? [] : s.fnc.codeArgs.split(/,(?=(?:(?:[^']*'){2})*[^']*$)/),
+		fncSchema:    s => s.pgFunctionIdMap[s.id] === undefined ? false : s.pgFunctionIdMap[s.id],
+		isChanged:    s => !s.deepIsEqual(s.fnc,s.fncSchema),
+		module:       s => s.fnc === false ? false : s.moduleIdMap[s.fnc.moduleId],
+		modulesDoc:   s => s.getDependentModules(s.module).filter(v => v.docs.length        !== 0),
+		modulesData:  s => s.getDependentModules(s.module).filter(v => v.relations.length   !== 0),
+		modulesFnc:   s => s.getDependentModules(s.module).filter(v => v.pgFunctions.length !== 0),
+		preview:      s => !s.showPreview ? '' : s.placeholdersUnset(s.fncBody,true),
 		
 		// stores
-		moduleIdMap:    (s) => s.$store.getters['schema/moduleIdMap'],
-		moduleNameMap:  (s) => s.$store.getters['schema/moduleNameMap'],
-		relationIdMap:  (s) => s.$store.getters['schema/relationIdMap'],
-		presetIdMap:    (s) => s.$store.getters['schema/presetIdMap'],
-		attributeIdMap: (s) => s.$store.getters['schema/attributeIdMap'],
-		pgFunctionIdMap:(s) => s.$store.getters['schema/pgFunctionIdMap'],
-		capApp:         (s) => s.$store.getters.captions.builder.function,
-		capGen:         (s) => s.$store.getters.captions.generic
+		docIdMap:       s => s.$store.getters['schema/docIdMap'],
+		moduleIdMap:    s => s.$store.getters['schema/moduleIdMap'],
+		moduleNameMap:  s => s.$store.getters['schema/moduleNameMap'],
+		relationIdMap:  s => s.$store.getters['schema/relationIdMap'],
+		presetIdMap:    s => s.$store.getters['schema/presetIdMap'],
+		attributeIdMap: s => s.$store.getters['schema/attributeIdMap'],
+		pgFunctionIdMap:s => s.$store.getters['schema/pgFunctionIdMap'],
+		capApp:         s => s.$store.getters.captions.builder.function,
+		capGen:         s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
 		copyValueDialog,
+		deepIsEqual,
+		dialogDeleteAsk,
 		getAttributeIcon,
 		getDependentModules,
 		getFunctionHelp,
-		getNilUuid,
+		getTemplatePgFunctionSchedule,
 		getValidDbCharsForRx,
 		isAttributeFiles,
 		
@@ -760,35 +823,20 @@ let MyBuilderPgFunction = {
 		
 		// actions
 		addSchedule() {
-			this.schedules.push({
-				id:this.getNilUuid(),
-				atSecond:0,
-				atMinute:0,
-				atHour:12,
-				atDay:1,
-				intervalType:'days',
-				intervalValue:3
-			});
+			this.fnc.schedules.push(this.getTemplatePgFunctionSchedule());
 		},
-		reset() {
-			this.name           = this.pgFunction.name;
-			this.captions       = JSON.parse(JSON.stringify(this.pgFunction.captions));
-			this.codeArgs       = this.pgFunction.codeArgs;
-			this.codeFunction   = this.placeholdersSet(this.pgFunction.codeFunction);
-			this.codeReturns    = this.pgFunction.codeReturns;
-			this.isFrontendExec = this.pgFunction.isFrontendExec;
-			this.isLoginSync    = this.pgFunction.isLoginSync;
-			this.isTrigger      = this.pgFunction.isTrigger;
-			this.cost           = this.pgFunction.cost;
-			this.volatility     = this.pgFunction.volatility;
-			this.schedules      = JSON.parse(JSON.stringify(this.pgFunction.schedules));
-			this.addNew         = false;
-			this.addOld         = false;
-			
-			if(this.isTrigger && this.tabTarget === 'exec')
-				this.tabTarget = 'content';
-			
-			this.resetExec();
+		reset(manuelReset) {
+			if(this.fncSchema !== false && (manuelReset || !this.deepIsEqual(this.fncCopy,this.fncSchema))) {
+				this.fnc     = JSON.parse(JSON.stringify(this.fncSchema));
+				this.fncCopy = JSON.parse(JSON.stringify(this.fncSchema));
+
+				this.resetExec();
+				this.addNew = false;
+				this.addOld = false;
+				
+				if(this.fnc.isTrigger && this.tabTarget === 'exec')
+					this.tabTarget = 'content';
+			}
 		},
 		resetExec() {
 			this.execArgs     = [];
@@ -811,7 +859,7 @@ let MyBuilderPgFunction = {
 
 			this.$store.commit('dialog',{
 				captionTop:top,
-				captionBody:text,
+				captionBody:Array.isArray(text) ? text.join('<br /><br />') : text,
 				image:'question.png'
 			});
 		},
@@ -822,13 +870,18 @@ let MyBuilderPgFunction = {
 				image:'question.png'
 			});
 		},
+		toggleDocShow(docId) {
+			let pos = this.holderDocIdsOpen.indexOf(docId);
+			if(pos === -1) this.holderDocIdsOpen.push(docId);
+			else           this.holderDocIdsOpen.splice(pos,1);
+		},
 		toggleRelationShow(relationId) {
 			let pos = this.holderRelationIdsOpen.indexOf(relationId);
 			if(pos === -1) this.holderRelationIdsOpen.push(relationId);
 			else           this.holderRelationIdsOpen.splice(pos,1);
 		},
 		updateCost(value) {
-			this.cost = value === '' ? 0 : parseInt(value);
+			this.fnc.cost = value === '' ? 0 : parseInt(value);
 		},
 		
 		// placeholders are used for storing entities via ID instead of name (which can change)
@@ -881,10 +934,19 @@ let MyBuilderPgFunction = {
 				
 				return match;
 			});
+
+			// replace documents with placeholders
+			// stored in function text as: {PDF_CREATE_ATTACH::MOD_NAME.DOC_NAME})() or {PDF_CREATE_EXPORT::MOD_NAME.DOC_NAME})()
+			body = body.replace(/instance\.pdf_create_(attach|export)\(\'([a-z0-9\-]{36})\',/g,(match,mode,docId) => {
+				const doc = this.docIdMap[docId];
+				if(doc === undefined) return match;
+
+				const mod = this.moduleIdMap[doc.moduleId];
+				return `{PDF_CREATE_${mode.toUpperCase()}::${mod.name}.${doc.name}}(`;
+			});
 			return body;
 		},
-		placeholdersUnset(previewMode) {
-			let body    = this.codeFunction;
+		placeholdersUnset(body,previewMode) {
 			let dbChars = this.getValidDbCharsForRx();
 			
 			// replace attribute placeholders
@@ -1007,29 +1069,29 @@ let MyBuilderPgFunction = {
 				}
 				return match;
 			});
+
+			// replace document placeholders
+			// stored as: {PDF_CREATE_ATTACH::MOD_NAME.DOC_NAME})(...) or {PDF_CREATE_EXPORT::MOD_NAME.DOC_NAME})(...)
+			pat = new RegExp(`\\{PDF_CREATE_(ATTACH|EXPORT)\\:\\:(${dbChars})\\.([^\}]*)\\}\\(`,'g');
+			body = body.replace(pat,(match,mode,modName,docName) => {
+				const mod = this.moduleNameMap[modName];
+				if(mod !== undefined) {
+					for(let d of mod.docs) {
+						if(d.name === docName)
+							return `instance.pdf_create_${mode.toLowerCase()}('${d.id}',`;
+					}
+				}
+				return match;
+			});
 			return body;
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
-			ws.send('pgFunction','del',{id:this.pgFunction.id},true).then(
+			ws.send('pgFunction','del',this.fnc.id,true).then(
 				() => {
-					this.$root.schemaReload(this.pgFunction.moduleId);
-					this.$router.push('/builder/pg-functions/'+this.pgFunction.moduleId);
+					this.$root.schemaReload(this.fnc.moduleId);
+					this.$router.push('/builder/pg-functions/'+this.fnc.moduleId);
 				},
 				this.$root.genericError
 			);
@@ -1042,32 +1104,14 @@ let MyBuilderPgFunction = {
 					args[i] = null
 			}
 
-			ws.send('pgFunction','execAny',{
-				id:this.pgFunction.id,
-				args:args
-			},true).then(
+			ws.send('pgFunction','execAny',{id:this.fnc.id,args:args},true).then(
 				res => this.execResponse = res.payload === null ? '[NULL]' : res.payload,
 				this.$root.genericError
 			);
 		},
 		set() {
 			ws.sendMultiple([
-				ws.prepare('pgFunction','set',{
-					id:this.pgFunction.id,
-					moduleId:this.pgFunction.moduleId,
-					isTrigger:this.pgFunction.isTrigger,
-					
-					// changeable
-					name:this.name,
-					codeArgs:this.codeArgs,
-					codeFunction:this.placeholdersUnset(false),
-					codeReturns:this.codeReturns,
-					isFrontendExec:this.isFrontendExec,
-					cost:this.cost,
-					volatility:this.volatility,
-					schedules:this.schedules,
-					captions:this.captions
-				}),
+				ws.prepare('pgFunction','set',this.fnc),
 				ws.prepare('schema','check',{moduleId:this.module.id})
 			],true).then(
 				() => this.$root.schemaReload(this.module.id),

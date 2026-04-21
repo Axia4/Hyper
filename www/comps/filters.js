@@ -1,8 +1,10 @@
-import MyBuilderQuery          from './builder/builderQuery.js';
-import MyInputDateWrap         from './inputDateWrap.js';
-import MyInputDictionary       from './inputDictionary.js';
-import {isAttributeString}     from './shared/attribute.js';
-import {getColumnIsFilterable} from './shared/column.js';
+import MyBuilderQuery                      from './builder/builderQuery.js';
+import MyInputDateWrap                     from './inputDateWrap.js';
+import MyInputDictionary                   from './inputDictionary.js';
+import {isAttributeString}                 from './shared/attribute.js';
+import {getTemplateQuery}                  from './shared/builderTemplate.js';
+import {getColumnIsFilterable}             from './shared/column.js';
+import {getNestedIndexAttributeIdsByJoins} from './shared/query.js';
 import {
 	getDependentModules,
 	getItemTitleColumn,
@@ -12,25 +14,19 @@ import {
 	getCaption,
 	getDictByLang
 } from './shared/language.js';
-import {
-	getNestedIndexAttributeIdsByJoins,
-	getQueryTemplate
-} from './shared/query.js';
-export {MyFilters as default};
-export {MyFilterBrackets};
-export {MyFilterConnector};
-export {MyFilterOperator};
 
 const MyFilterBrackets = {
 	name:'my-filter-brackets',
 	template:`<my-button
 		@trigger="add(true)"
 		@trigger-right="add(false)"
+		:active="!readonly"
 		:caption="display(1)"
 	/>`,
 	props:{
 		left:      { type:Boolean, required:true },
-		modelValue:{ type:Number,  required:true }
+		modelValue:{ type:Number,  required:true },
+		readonly:  { type:Boolean, required:true }
 	},
 	emits:['update:modelValue'],
 	computed:{
@@ -65,7 +61,7 @@ const MyFilterBrackets = {
 
 const MyFilterOperator = {
 	name:'my-filter-operator',
-	template:`<select v-model="value">
+	template:`<select v-model="value" :disabled="readonly">
 		
 		<!-- operators in Builder mode -->
 		<template v-if="builderMode">
@@ -116,26 +112,24 @@ const MyFilterOperator = {
 		
 		<!-- operators in user mode -->
 		<template v-if="!builderMode">
-			<template v-if="!onlyFts">
-				<option value="=" >{{ capApp.option.operator.eq }}</option>
-				<option value="<>">{{ capApp.option.operator.ne }}</option>
-			</template>
+			<option value="=" >{{ capApp.option.operator.eq }}</option>
+			<option value="<>">{{ capApp.option.operator.ne }}</option>
 			
-			<template v-if="!onlyString && !onlyFts">
+			<template v-if="!onlyString">
 				<option value="<" >{{ capApp.option.operator.st }}</option>
 				<option value=">" >{{ capApp.option.operator.lt }}</option>
 				<option value="<=">{{ capApp.option.operator.se }}</option>
 				<option value=">=">{{ capApp.option.operator.le }}</option>
 			</template>
 			
-			<template v-if="!onlyDates && !onlyFts">
-				<option value="ILIKE"    >{{ capApp.option.operator.ilike     }}</option>
-				<option value="LIKE"     >{{ capApp.option.operator.like      }}</option>
-				<option value="NOT ILIKE">{{ capApp.option.operator.not_ilike }}</option>
-				<option value="NOT LIKE" >{{ capApp.option.operator.not_like  }}</option>
+			<template v-if="!onlyDates">
+				<option value="ILIKE"           >{{ capApp.option.operator.ilike     }}</option>
+				<option value="LIKE"            >{{ capApp.option.operator.like      }}</option>
+				<option value="@@" v-if="hasFts">{{ capApp.option.operator.fts       }}</option>
+				<option value="NOT ILIKE"       >{{ capApp.option.operator.not_ilike }}</option>
+				<option value="NOT LIKE"        >{{ capApp.option.operator.not_like  }}</option>
 			</template>
 			
-			<option v-if="onlyFts" value="@@">{{ capApp.option.operator.fts }}</option>
 			
 			<option value="IS NULL"    >{{ capApp.option.operator.null     }}</option>
 			<option value="IS NOT NULL">{{ capApp.option.operator.not_null }}</option>
@@ -149,10 +143,11 @@ const MyFilterOperator = {
 	},
 	props:{
 		builderMode:{ type:Boolean, required:true },                 // only show in Builder mode (e. g. not for regular users)
+		hasFts:     { type:Boolean, required:false, default:false }, // show full text search operators
 		modelValue: { type:String,  required:true },
 		onlyDates:  { type:Boolean, required:false, default:false }, // only show operators that can be used for date values (e. g. unix time)
-		onlyFts:    { type:Boolean, required:false, default:false }, // only show full text search operators
-		onlyString: { type:Boolean, required:false, default:false }  // only show string operators
+		onlyString: { type:Boolean, required:false, default:false }, // only show string operators
+		readonly:   { type:Boolean, required:true }
 	},
 	emits:['update:modelValue'],
 	computed:{
@@ -160,7 +155,7 @@ const MyFilterOperator = {
 			get()  { return this.modelValue; },
 			set(v) { this.$emit('update:modelValue',v); }
 		},
-		capApp:(s) => s.$store.getters.captions.filter
+		capApp:s => s.$store.getters.captions.filter
 	}
 };
 
@@ -172,7 +167,7 @@ const MyFilterConnector = {
 	</select>`,
 	props:{
 		modelValue:{ type:String,  required:true },
-		readonly:  { type:Boolean, required:false, default:false }
+		readonly:  { type:Boolean, required:true }
 	},
 	emits:['update:modelValue'],
 	computed:{
@@ -180,13 +175,13 @@ const MyFilterConnector = {
 			get()  { return this.modelValue; },
 			set(v) { this.$emit('update:modelValue',v); }
 		},
-		capApp:(s) => s.$store.getters.captions.filter
+		capApp:s => s.$store.getters.captions.filter
 	}
 };
 
 const MyFilterAttribute = {
 	name:'my-filter-attribute',
-	template:`<select v-model="value">
+	template:`<select v-model="value" :disabled="readonly">
 		<template v-if="columnsMode" v-for="b in columnBatches">
 
 			<!-- single column batch -->
@@ -233,7 +228,8 @@ const MyFilterAttribute = {
 		groupQueriesNested:     { type:Boolean, required:false, default:false },
 		modelValue:             { type:String,  required:true },
 		nestedIndexAttributeIds:{ type:Array,   required:true },
-		nestingLevels:          { type:Number,  required:true }
+		nestingLevels:          { type:Number,  required:true },
+		readonly:               { type:Boolean, required:true }
 	},
 	emits:['update:modelValue'],
 	computed:{
@@ -243,12 +239,12 @@ const MyFilterAttribute = {
 		},
 
 		// simple
-		columnsMode:(s) => s.columns.length !== 0,
+		columnsMode:s => s.columns.length !== 0,
 		
 		// stores
-		relationIdMap: (s) => s.$store.getters['schema/relationIdMap'],
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		capApp:        (s) => s.$store.getters.captions.filter
+		relationIdMap: s => s.$store.getters['schema/relationIdMap'],
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		capApp:        s => s.$store.getters.captions.filter
 	},
 	methods:{
 		// externals
@@ -302,6 +298,7 @@ const MyFilterSide = {
 				<select
 					v-if="!columnsMode"
 					@input="setContent"
+					:disabled="readonly"
 					:value="content"
 				>
 					<optgroup v-if="contentApi.length !== 0" :label="capApp.contentApi">
@@ -360,15 +357,16 @@ const MyFilterSide = {
 				<my-filter-attribute
 					v-if="isAttribute"
 					v-model="nestedIndexAttribute"
-					:columns="columns"
-					:columnBatches="columnBatches"
+					:columns
+					:columnBatches
 					:groupQueriesNested="nestingLevels !== 0 && !isSubQuery && builderMode"
 					:nestedIndexAttributeIds="!isSubQuery ? nestedIndexAttributeIds : nestedIndexAttributeIdsSubQuery"
-					:nestingLevels="nestingLevels"
+					:nestingLevels
+					:readonly
 				/>
 				
 				<!-- collection input -->
-				<select v-model="collectionId" v-if="!columnsMode && isCollection">
+				<select v-model="collectionId" v-if="!columnsMode && isCollection" :disabled="readonly">
 					<option :value="null">-</option>
 					<option v-for="c in module.collections" :value="c.id">{{ c.name }}</option>
 					<optgroup
@@ -380,7 +378,7 @@ const MyFilterSide = {
 				</select>
 				
 				<!-- collection column input -->
-				<select v-model="columnId" v-if="!columnsMode && isCollection && collectionId !== null">
+				<select v-model="columnId" v-if="!columnsMode && isCollection && collectionId !== null" :disabled="readonly">
 					<option :value="null">-</option>
 					<option v-for="c in collectionIdMap[collectionId].columns" :value="c.id">
 						{{ getItemTitleColumn(c,true) }}
@@ -388,18 +386,17 @@ const MyFilterSide = {
 				</select>
 				
 				<!-- field input -->
-				<select v-model="fieldId" v-if="!columnsMode && isField">
+				<select v-model="fieldId" v-if="!columnsMode && isField" :disabled="readonly">
 					<template v-for="(ref,fieldId) in entityIdMapRef.field">
 						<option
 							v-if="fieldIdMap[fieldId].content === 'data'"
-							:disabled="fieldId.startsWith('new')"
 							:value="fieldId"
-						>F{{ fieldId.startsWith('new') ? ref + ' (' + capGen.notSaved + ')' : ref }}</option>
+						>F{{ ref }}</option>
 					</template>
 				</select>
 				
 				<!-- form state input -->
-				<select v-model="formStateId" v-if="!columnsMode && isFormState">
+				<select v-model="formStateId" v-if="!columnsMode && isFormState" :disabled="readonly">
 					<option
 						v-for="state in formIdMap[formId].states"
 						:value="state.id"
@@ -407,7 +404,7 @@ const MyFilterSide = {
 				</select>
 				
 				<!-- preset input -->
-				<select v-model="presetId" v-if="!columnsMode && isPreset">
+				<select v-model="presetId" v-if="!columnsMode && isPreset" :disabled="readonly">
 					<option :value="null"></option>
 					<optgroup
 						v-for="r in module.relations.filter(v => v.presets.filter(p => p.protected).length !== 0)"
@@ -431,7 +428,7 @@ const MyFilterSide = {
 				</select>
 				
 				<!-- role input -->
-				<select v-model="roleId" v-if="!columnsMode && isRole">
+				<select v-model="roleId" v-if="!columnsMode && isRole" :disabled="readonly">
 					<option :value="null"></option>
 					<option v-for="r in module.roles" :value="r.id">
 						{{ r.name }}
@@ -439,7 +436,7 @@ const MyFilterSide = {
 				</select>
 				
 				<!-- variable input -->
-				<select v-model="variableId" v-if="!columnsMode && isVariable">
+				<select v-model="variableId" v-if="!columnsMode && isVariable" :disabled="readonly">
 					<option :value="null">-</option>
 					<optgroup :label="capGen.form">
 						<option v-for="v in module.variables.filter(v => v.formId === formId)" :value="v.id">
@@ -457,10 +454,11 @@ const MyFilterSide = {
 				<template v-if="!columnsMode && isAnyDate">
 					<input
 						v-model.number="nowOffset"
+						:disabled="readonly"
 						:placeholder="capApp.nowOffsetHint.replace('{MODE}',capApp.option.nowMode[nowOffsetMode])"
 						:title="capApp.nowOffsetTitle"
 					/>
-					<select v-model="nowOffsetMode" @change="changeOffsetMode">
+					<select v-model="nowOffsetMode" @change="changeOffsetMode" :disabled="readonly">
 						<option value="seconds">{{ capApp.option.nowMode.seconds }}</option>
 						<option value="minutes">{{ capApp.option.nowMode.minutes }}</option>
 						<option value="hours">{{ capApp.option.nowMode.hours }}</option>
@@ -474,6 +472,7 @@ const MyFilterSide = {
 						v-if="!columnDate && !columnTime"
 						@keyup.enter="$emit('apply-value')"
 						v-model="valueFixText"
+						:disabled="readonly"
 						:placeholder="fixedValuePlaceholder"
 					/>
 					<my-input-date-wrap
@@ -481,6 +480,7 @@ const MyFilterSide = {
 						@set-unix-from="valueFixTextDate = $event"
 						:isDate="columnDate"
 						:isTime="columnTime"
+						:isReadonly="readonly"
 						:unixFrom="valueFixTextDate"
 					/>
 				</template>
@@ -491,28 +491,17 @@ const MyFilterSide = {
 		<div class="subQuery shade" v-if="isSubQuery && showQuery">
 			<!-- filter sub query -->
 			<my-builder-query
-				@set-choices="setQuery('choices',$event)"
-				@set-filters="setQuery('filters',$event)"
-				@set-fixed-limit="setQuery('fixedLimit',$event)"
-				@set-lookups="setQuery('lookups',$event)"
-				@set-joins="setQuery('joins',$event)"
-				@set-orders="setQuery('orders',$event)"
-				@set-relation-id="setQuery('relationId',$event)"
+				@update:modelValue="set('query',$event)"
 				:allowChoices="false"
 				:allowOrders="true"
-				:choices="query.choices"
-				:entityIdMapRef="entityIdMapRef"
-				:fieldIdMap="fieldIdMap"
-				:filters="query.filters"
+				:entityIdMapRef
+				:fieldIdMap
 				:filtersDisable="disableContent"
-				:fixedLimit="query.fixedLimit"
-				:formId="formId"
-				:joins="query.joins"
+				:formId
 				:joinsParents="joinsParents.concat([joins])"
-				:lookups="query.lookups"
-				:moduleId="moduleId"
-				:orders="query.orders"
-				:relationId="query.relationId"
+				:modelValue="query"
+				:moduleId
+				:readonly
 			/>
 			<template v-if="query.relationId !== null">
 				<br />
@@ -520,16 +509,17 @@ const MyFilterSide = {
 				<table class="default-inputs">
 					<tbody>
 						<tr>
-							<td>{{ capApp.subQueryAttribute }}</td>
+							<td>{{ capGen.attribute }}</td>
 							<td>
 								<!-- sub query attribute input -->
 								<my-filter-attribute
 									v-model="nestedIndexAttribute"
-									:columns="columns"
-									:columnBatches="columnBatches"
+									:columns
+									:columnBatches
 									:groupQueriesNested="nestingLevels !== 0 && !isSubQuery && builderMode"
 									:nestedIndexAttributeIds="!isSubQuery ? nestedIndexAttributeIds : nestedIndexAttributeIdsSubQuery"
-									:nestingLevels="nestingLevels"
+									:nestingLevels
+									:readonly
 								/>
 							</td>
 						</tr>
@@ -537,7 +527,7 @@ const MyFilterSide = {
 							<td>{{ capApp.subQueryAggregator }}</td>
 							<td>
 								<!-- sub query aggregator input -->
-								<select v-model="queryAggregator">
+								<select v-model="queryAggregator" :disabled="readonly">
 									<option value=""     >-</option>
 									<option value="array">{{ capGen.option.aggArray }}</option>
 									<option value="avg"  >{{ capGen.option.aggAvg }}</option>
@@ -572,7 +562,8 @@ const MyFilterSide = {
 		modelValue:    { type:Object,  required:true },
 		moduleId:      { type:String,  required:true },
 		nestedIndexAttributeIds:{ type:Array, required:true },
-		nestingLevels: { type:Number,  required:true }
+		nestingLevels: { type:Number,  required:true },
+		readonly:      { type:Boolean, required:true }
 	},
 	emits:['apply-value','update:modelValue'],
 	data() {
@@ -583,7 +574,7 @@ const MyFilterSide = {
 	},
 	computed:{
 		// entities
-		nestedIndexAttributeIdsSubQuery:(s) => {
+		nestedIndexAttributeIdsSubQuery:s => {
 			if(!s.isSubQuery) return [];
 			
 			return s.getNestedIndexAttributeIdsByJoins(
@@ -594,7 +585,7 @@ const MyFilterSide = {
 		},
 
 		// presentation
-		fixedValuePlaceholder:(s) => {
+		fixedValuePlaceholder:s => {
 			if(s.isValue)      return s.capApp.valueHint;
 			if(s.isGetter)     return s.capApp.getterHint;
 			if(s.isJavascript) return s.capApp.javascriptHint;
@@ -673,7 +664,7 @@ const MyFilterSide = {
 			set(v) { this.set('presetId',v); }
 		},
 		query:{
-			get()  { return this.modelValue.query; },
+			get()  { return this.modelValue.query !== null ? this.modelValue.query : this.getTemplateQuery(); },
 			set(v) { this.set('query',v); }
 		},
 		queryAggregator:{
@@ -701,43 +692,43 @@ const MyFilterSide = {
 		},
 		
 		// simple
-		columnsMode:  (s) => s.columns.length !== 0,
-		contentApi:   (s) => ['getter'].filter(v => !s.disableContent.includes(v)),
-		contentData:  (s) => ['attribute','collection','preset','subQuery','value','true','variable'].filter(v => !s.disableContent.includes(v)),
-		contentDate:  (s) => ['nowDate','nowDatetime','nowTime'].filter(v => !s.disableContent.includes(v)),
-		contentForm:  (s) => ['formChanged','formState','field','fieldChanged','fieldValid','javascript','record','recordMayCreate','recordMayDelete','recordMayUpdate','recordNew'].filter(v => !s.disableContent.includes(v)),
-		contentLogin: (s) => ['languageCode','login','role'].filter(v => !s.disableContent.includes(v)),
-		contentSearch:(s) => ['globalSearch'].filter(v => !s.disableContent.includes(v)),
-		module:       (s) => s.moduleId === '' ? false : s.moduleIdMap[s.moduleId],
+		columnsMode:  s => s.columns.length !== 0,
+		contentApi:   s => ['getter'].filter(v => !s.disableContent.includes(v)),
+		contentData:  s => ['attribute','collection','preset','subQuery','value','true','variable'].filter(v => !s.disableContent.includes(v)),
+		contentDate:  s => ['nowDate','nowDatetime','nowTime'].filter(v => !s.disableContent.includes(v)),
+		contentForm:  s => ['formChanged','formState','field','fieldChanged','fieldValid','javascript','record','recordMayCreate','recordMayDelete','recordMayUpdate','recordNew'].filter(v => !s.disableContent.includes(v)),
+		contentLogin: s => ['languageCode','login','role'].filter(v => !s.disableContent.includes(v)),
+		contentSearch:s => ['globalSearch'].filter(v => !s.disableContent.includes(v)),
+		module:       s => s.moduleId === '' ? false : s.moduleIdMap[s.moduleId],
 		
 		// states
-		isAnyDate:    (s) => ['nowDate','nowDatetime','nowTime'].includes(s.content),
-		isAttribute:  (s) => s.content === 'attribute',
-		isCollection: (s) => s.content === 'collection',
-		isField:      (s) => ['field','fieldChanged','fieldValid'].includes(s.content),
-		isFormState:  (s) => s.content === 'formState',
-		isGetter:     (s) => s.content === 'getter',
-		isJavascript: (s) => s.content === 'javascript',
-		isNullPartner:(s) => !s.leftSide && s.isNullOperator,
-		isPreset:     (s) => s.content === 'preset',
-		isRole:       (s) => s.content === 'role',
-		isSubQuery:   (s) => s.content === 'subQuery',
-		isValue:      (s) => s.content === 'value',
-		isVariable:   (s) => s.content === 'variable',
+		isAnyDate:    s => ['nowDate','nowDatetime','nowTime'].includes(s.content),
+		isAttribute:  s => s.content === 'attribute',
+		isCollection: s => s.content === 'collection',
+		isField:      s => ['field','fieldChanged','fieldValid'].includes(s.content),
+		isFormState:  s => s.content === 'formState',
+		isGetter:     s => s.content === 'getter',
+		isJavascript: s => s.content === 'javascript',
+		isNullPartner:s => !s.leftSide && s.isNullOperator,
+		isPreset:     s => s.content === 'preset',
+		isRole:       s => s.content === 'role',
+		isSubQuery:   s => s.content === 'subQuery',
+		isValue:      s => s.content === 'value',
+		isVariable:   s => s.content === 'variable',
 		
 		// stores
-		moduleIdMap:    (s) => s.$store.getters['schema/moduleIdMap'],
-		formIdMap:      (s) => s.$store.getters['schema/formIdMap'],
-		collectionIdMap:(s) => s.$store.getters['schema/collectionIdMap'],
-		capApp:         (s) => s.$store.getters.captions.filter,
-		capGen:         (s) => s.$store.getters.captions.generic
+		moduleIdMap:    s => s.$store.getters['schema/moduleIdMap'],
+		formIdMap:      s => s.$store.getters['schema/formIdMap'],
+		collectionIdMap:s => s.$store.getters['schema/collectionIdMap'],
+		capApp:         s => s.$store.getters.captions.filter,
+		capGen:         s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
 		getDependentModules,
 		getItemTitleColumn,
 		getNestedIndexAttributeIdsByJoins,
-		getQueryTemplate,
+		getTemplateQuery,
 		
 		// actions
 		set(name,newValue) {
@@ -788,15 +779,10 @@ const MyFilterSide = {
 				v.queryAggregator = null;
 			}
 			else {
-				v.query = this.getQueryTemplate();
+				v.query = this.getTemplateQuery();
 				this.showQuery = true;
 			}
 			this.$emit('update:modelValue',v);
-		},
-		setQuery(name,newValue) {
-			let v = JSON.parse(JSON.stringify(this.modelValue.query));
-			v[name] = newValue;
-			this.set('query',v);
 		},
 		changeOffsetMode() {
 			if(this.nowOffset !== 0 && this.nowOffset !== null)
@@ -815,43 +801,46 @@ const MyFilter = {
 		MyInputDictionary
 	},
 	template:`<div class="filter">
-		<img v-if="multipleFilters" class="dragAnchor" src="images/drag.png" />
+		<img v-if="multipleFilters && !readonly" class="dragAnchor" src="images/drag.png" />
 		
 		<div class="filter-side-indentation" :style="'width:' + (indentation*8) + 'px'"></div>
 		<my-filter-connector class="connector"
 			v-if="multipleFilters"
 			v-model="connectorInput"
-			:readonly="position === 0"
+			:readonly="position === 0 || readonly"
 		/>
 		<my-filter-brackets class="brackets"
 			v-if="multipleFilters || isAnyBracketsSet"
 			v-model="brackets0Input"
 			:left="true"
+			:readonly
 		/>
 		<my-filter-side
 			v-model="side0Input"
 			@apply-value="$emit('apply-value')"
-			:builderMode="builderMode"
-			:columns="columns"
-			:columnBatches="columnBatches"
-			:disableContent="disableContent"
-			:entityIdMapRef="entityIdMapRef"
-			:fieldIdMap="fieldIdMap"
-			:formId="formId"
-			:isNullOperator="isNullOperator"
-			:joins="joins"
-			:joinsParents="joinsParents"
+			:builderMode
+			:columns
+			:columnBatches
+			:disableContent
+			:entityIdMapRef
+			:fieldIdMap
+			:formId
+			:isNullOperator
+			:joins
+			:joinsParents
 			:leftSide="true"
-			:moduleId="moduleId"
-			:nestedIndexAttributeIds="nestedIndexAttributeIds"
-			:nestingLevels="nestingLevels"
+			:moduleId
+			:nestedIndexAttributeIds
+			:nestingLevels
+			:readonly
 		/>
 		<my-filter-operator class="operator"
 			v-model="operatorInput"
-			:builderMode="builderMode"
+			:builderMode
+			:hasFts="side0ColumFtsMode !== null"
 			:onlyDates="side0ColumDate || side0ColumTime"
-			:onlyFts="side0ColumFtsMode !== null"
 			:onlyString="isStringInput"
+			:readonly
 		/>
 		<my-button image="question.png"
 			v-if="operator === '@@' && !builderMode"
@@ -860,38 +849,38 @@ const MyFilter = {
 		<my-filter-side
 			v-model="side1Input"
 			@apply-value="$emit('apply-value')"
-			:builderMode="builderMode"
+			:builderMode
 			:columnDate="side0ColumDate"
 			:columnTime="side0ColumTime"
-			:columns="columns"
-			:columnBatches="columnBatches"
-			:disableContent="disableContent"
-			:entityIdMapRef="entityIdMapRef"
-			:fieldIdMap="fieldIdMap"
-			:formId="formId"
-			:isNullOperator="isNullOperator"
-			:joins="joins"
-			:joinsParents="joinsParents"
+			:columns
+			:columnBatches
+			:disableContent
+			:entityIdMapRef
+			:fieldIdMap
+			:formId
+			:isNullOperator
+			:joins
+			:joinsParents
 			:leftSide="false"
-			:moduleId="moduleId"
-			:nestedIndexAttributeIds="nestedIndexAttributeIds"
-			:nestingLevels="nestingLevels"
+			:moduleId
+			:nestedIndexAttributeIds
+			:nestingLevels
+			:readonly
 		/>
-		
-		<!-- full text search, dictionary input (only with dictionary attribute) -->
 		<my-input-dictionary
 			v-if="side0ColumFtsMode === 'dict'"
 			v-model="searchDictionaryInput"
 			:title="capApp.searchDictionaryHint"
 		/>
-		
 		<my-filter-brackets class="brackets"
 			v-if="multipleFilters || isAnyBracketsSet"
 			v-model="brackets1Input"
 			:left="false"
+			:readonly
 		/>
 		<my-button image="delete.png"
 			@trigger="$emit('remove',position)"
+			:active="!readonly"
 			:cancel="true"
 		/>
 	</div>`,
@@ -910,6 +899,7 @@ const MyFilter = {
 		multipleFilters:        { type:Boolean, required:true },
 		nestedIndexAttributeIds:{ type:Array,   required:true },
 		nestingLevels:          { type:Number,  required:true },
+		readonly:               { type:Boolean, required:true },
 		
 		// filter inputs
 		connector:{ type:String, required:true },
@@ -922,9 +912,6 @@ const MyFilter = {
 	watch:{
 		side0ColumFtsMode:{
 			handler(ftsMode) {
-				if(ftsMode !== null && this.operator !== '@@')
-					return this.operatorInput = '@@';
-				
 				if(ftsMode === null && this.operator === '@@')
 					return this.operatorInput = '=';
 			},
@@ -984,14 +971,14 @@ const MyFilter = {
 		},
 		
 		// states
-		side0Column:(s) => {
-			for(let c of s.columns) {
+		side0Column:s => {
+			for(const c of s.columns) {
 				if(c.index === s.side0.attributeIndex && c.attributeId === s.side0.attributeId)
 					return c;
 			}
 			return false;
 		},
-		side0ColumFtsMode:(s) => {
+		side0ColumFtsMode:s => {
 			if(!s.side0Column) return null;
 			
 			const atr = s.attributeIdMap[s.side0Column.attributeId];
@@ -1005,11 +992,11 @@ const MyFilter = {
 			}
 			return null;
 		},
-		side0ColumDate:  (s) => s.side0Column && ['date','datetime'].includes(s.attributeIdMap[s.side0Column.attributeId].contentUse),
-		side0ColumTime:  (s) => s.side0Column && ['datetime','time'].includes(s.attributeIdMap[s.side0Column.attributeId].contentUse),
-		isAnyBracketsSet:(s) => s.brackets0Input !== 0 || s.brackets1Input !== 0,
-		isNullOperator:  (s) => ['IS NULL','IS NOT NULL'].includes(s.operator),
-		isStringInput:   (s) => (
+		side0ColumDate:  s => s.side0Column && ['date','datetime'].includes(s.attributeIdMap[s.side0Column.attributeId].contentUse),
+		side0ColumTime:  s => s.side0Column && ['datetime','time'].includes(s.attributeIdMap[s.side0Column.attributeId].contentUse),
+		isAnyBracketsSet:s => s.brackets0Input !== 0 || s.brackets1Input !== 0,
+		isNullOperator:  s => ['IS NULL','IS NOT NULL'].includes(s.operator),
+		isStringInput:   s => (
 			typeof s.side0.attributeId !== 'undefined' &&
 			s.side0.attributeId !== null &&
 			s.isAttributeString(s.attributeIdMap[s.side0.attributeId].content)
@@ -1020,10 +1007,10 @@ const MyFilter = {
 		),
 		
 		// stores
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		relationIdMap: (s) => s.$store.getters['schema/relationIdMap'],
-		capApp:        (s) => s.$store.getters.captions.filter,
-		capGen:        (s) => s.$store.getters.captions.generic
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		relationIdMap: s => s.$store.getters['schema/relationIdMap'],
+		capApp:        s => s.$store.getters.captions.filter,
+		capGen:        s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
@@ -1042,7 +1029,7 @@ const MyFilter = {
 	}
 };
 
-const MyFilters = {
+export default {
 	name:'my-filters',
 	components:{MyFilter},
 	template:`<div class="filters">
@@ -1057,24 +1044,25 @@ const MyFilters = {
 					@apply-value="apply"
 					@remove="remove"
 					@update="setValue"
-					:builderMode="builderMode"
-					:columns="columns"
-					:columnBatches="columnBatches"
+					:builderMode
+					:columns
+					:columnBatches
 					:connector="element.connector"
-					:disableContent="disableContent"
-					:entityIdMapRef="entityIdMapRef"
-					:fieldIdMap="fieldIdMap"
-					:formId="formId"
+					:disableContent
+					:entityIdMapRef
+					:fieldIdMap
+					:formId
 					:indentation="getIndentation(index)"
-					:joins="joins"
-					:joinsParents="joinsParents"
+					:joins
+					:joinsParents
 					:key="index"
-					:moduleId="moduleId"
+					:moduleId
 					:multipleFilters="filters.length > 1"
 					:nestedIndexAttributeIds="nestedIndexAttributeIds"
 					:nestingLevels="joinsParents.length+1"
 					:operator="element.operator"
 					:position="index"
+					:readonly
 					:side0="element.side0"
 					:side1="element.side1"
 				/>
@@ -1093,12 +1081,13 @@ const MyFilters = {
 		joins:         { type:Array,   required:false, default:() => [] },
 		joinsParents:  { type:Array,   required:false, default:() => [] },
 		modelValue:    { type:Array,   required:true },
-		moduleId:      { type:String,  required:false, default:'' }
+		moduleId:      { type:String,  required:false, default:'' },
+		readonly:      { type:Boolean, required:false, default:false }
 	},
 	emits:['apply','update:modelValue'],
 	watch:{
 		modelValue:{
-			handler:function() { this.reset(); },
+			handler() { this.reset(); },
 			immediate:true
 		}
 	},
@@ -1112,7 +1101,7 @@ const MyFilters = {
 		//  nesting level (0=main query, 1=1st sub query)
 		//  relation join index
 		//  attribute ID
-		nestedIndexAttributeIds:(s) => {
+		nestedIndexAttributeIds:s => {
 			if(s.columnsMode)
 				return []; // not required if filtered by columns/column batches
 			
@@ -1128,17 +1117,18 @@ const MyFilters = {
 		},
 		
 		// simple states
-		anyFilters: (s) => s.filters.length !== 0,
-		columnsMode:(s) => s.columns.length !== 0,
+		anyFilters: s => s.filters.length !== 0,
+		columnsMode:s => s.columns.length !== 0,
 		
 		// stores
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		capGen:        (s) => s.$store.getters.captions.generic
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		capGen:        s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
 		getNestedIndexAttributeIdsByJoins,
 		
+		// presentation
 		getIndentation(filterIndex) {
 			let indentation = 0;
 			for(let i = 0; i < filterIndex; i++) {

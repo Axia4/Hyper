@@ -1,28 +1,33 @@
-import MyBuilderAttribute    from './builderAttribute.js';
-import MyBuilderPreset       from './builderPreset.js';
-import MyBuilderPgIndex      from './builderPgIndex.js';
-import MyBuilderPgTriggers   from './builderPgTriggers.js';
-import MyBuilderPresets      from './builderPresets.js';
-import MyInputOffset         from '../inputOffset.js';
-import MyTabs                from '../tabs.js';
-import {srcBase64}           from '../shared/image.js';
-import {
-	copyValueDialog,
-	getNilUuid
-} from '../shared/generic.js';
+import MyBuilderAttribute          from './builderAttribute.js';
+import MyBuilderCaption            from './builderCaption.js';
+import MyBuilderPreset             from './builderPreset.js';
+import MyBuilderPgIndex            from './builderPgIndex.js';
+import MyBuilderPgTriggers         from './builderPgTriggers.js';
+import MyBuilderPresets            from './builderPresets.js';
+import MyInputDecimal              from '../inputDecimal.js';
+import MyInputOffset               from '../inputOffset.js';
+import {getTemplateRelationPolicy} from '../shared/builderTemplate.js';
+import {dialogDeleteAsk}           from '../shared/dialog.js';
+import {srcBase64}                 from '../shared/image.js';
 import {
 	getAttributeIcon,
+	isAttributeDecimal,
 	isAttributeFiles,
+	isAttributeInteger,
 	isAttributeRelationship,
 	isAttributeRelationship11,
+	isAttributeString,
+	isAttributeUuid,
 	isAttributeWithLength
 } from '../shared/attribute.js';
 import {
 	getDependentModules,
 	getDependentAttributes
 } from '../shared/builder.js';
-
-export {MyBuilderRelation as default};
+import {
+	copyValueDialog,
+	deepIsEqual
+} from '../shared/generic.js';
 
 const MyBuilderRelationsItemPolicy = {
 	name:'my-builder-relations-item-policy',
@@ -113,8 +118,8 @@ const MyBuilderRelationsItemPolicy = {
 		},
 		
 		// stores
-		module:(s) => s.$store.getters['schema/moduleIdMap'][s.moduleId],
-		capApp:(s) => s.$store.getters.captions.builder.relation
+		module:s => s.$store.getters['schema/moduleIdMap'][s.moduleId],
+		capApp:s => s.$store.getters.captions.builder.relation
 	},
 	methods:{
 		// external
@@ -129,125 +134,50 @@ const MyBuilderRelationsItemPolicy = {
 	}
 };
 
-const MyBuilderRelation = {
+export default {
 	name:'my-builder-relation',
 	components:{
 		echarts:VueECharts,
 		MyBuilderAttribute,
+		MyBuilderCaption,
 		MyBuilderPreset,
 		MyBuilderPgIndex,
 		MyBuilderPgTriggers,
 		MyBuilderPresets,
 		MyBuilderRelationsItemPolicy,
-		MyInputOffset,
-		MyTabs
+		MyInputDecimal,
+		MyInputOffset
 	},
 	template:`<div class="contentBox grow scroll">
 		<div class="top lower nowrap">
 			<div class="area">
 				<img class="icon" src="images/database.png" />
-				<h1 class="title">{{ capApp.titleOne.replace('{NAME}',name) }}</h1>
+				<h1 class="title">{{ capApp.titleOne.replace('{NAME}',relation.name) }}</h1>
 			</div>
 			<div class="area">
 				<div class="row gap default-inputs" v-if="['attributes','presets'].includes(tabTarget)">
 					<input v-model="nameFilter" :placeholder="capGen.threeDots" />
 				</div>
-				<my-button image="editBox.png"
-					@trigger="showProperties = true"
-					:caption="capGen.properties"
+			</div>
+			<div class="area">
+				<my-button image="visible1.png"
+					@trigger="copyValueDialog(relation.name,relation.id,relation.id)"
+					:caption="capGen.id"
+				/>
+				<my-button image="delete.png"
+					@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
+					:active="!readonly"
+					:cancel="true"
+					:caption="capGen.button.delete"
+					:captionTitle="capGen.button.delete"
 				/>
 			</div>
 		</div>
 
-		<!-- relation properties -->
-		<div class="app-sub-window under-header" v-if="showProperties" @mousedown.self="showProperties = false">
-			<div class="contentBox float">
-				<div class="top">
-					<div class="area nowrap">
-						<img class="icon" src="images/database.png" />
-						<h1 class="title">{{ capGen.properties }}</h1>
-					</div>
-					<div class="area">
-						<my-button image="cancel.png"
-							@trigger="showProperties = false"
-							:cancel="true"
-						/>
-					</div>
-				</div>
-				<div class="top lower">
-					<div class="area">
-						<my-button image="save.png"
-							@trigger="set"
-							:active="canSave"
-							:caption="capGen.button.save"
-							:captionTitle="capGen.button.save"
-						/>
-						<my-button image="refresh.png"
-							@trigger="reset"
-							:active="hasChanges"
-							:caption="capGen.button.refresh"
-						/>
-					</div>
-					<div class="area">
-						<my-button image="visible1.png"
-							@trigger="copyValueDialog(relation.name,relation.id,relation.id)"
-							:caption="capGen.id"
-						/>
-						<my-button image="delete.png"
-							@trigger="delAsk"
-							:active="!readonly"
-							:cancel="true"
-							:caption="capGen.button.delete"
-							:captionTitle="capGen.button.delete"
-						/>
-					</div>
-				</div>
-				
-				<div class="content default-inputs no-padding">
-					<table class="generic-table-vertical default-inputs">
-						<tbody>
-							<tr>
-								<td>{{ capGen.name }}</td>
-								<td><input class="long" v-model="name" :disabled="readonly" /></td>
-								<td>{{ capApp.nameHint }}</td>
-							</tr>
-							<tr>
-								<td>{{ capGen.comments }}</td>
-								<td colspan="2"><textarea class="dynamic" v-model="comment" :disabled="readonly"></textarea></td>
-							</tr>
-							<tr>
-								<td>{{ capApp.encryption }}</td>
-								<td><my-bool v-model="encryption" :readonly="true" /></td>
-								<td>{{ capApp.encryptionHint }}</td>
-							</tr>
-							<tr>
-								<td>{{ capApp.retention }}</td>
-								<td>
-									<table>
-										<tbody>
-											<tr>
-												<td>{{ capApp.retentionCount }}</td>
-												<td><input v-model.number="retentionCount" :disabled="readonly" /></td>
-											</tr>
-											<tr>
-												<td>{{ capApp.retentionDays }}</td>
-												<td><input v-model.number="retentionDays" :disabled="readonly" /></td>
-											</tr>
-										</tbody>
-									</table>
-								</td>
-								<td>{{ capApp.retentionHint }}</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-			</div>
-		</div>
-		
 		<div class="content no-padding builder-relation">
 			<my-tabs
 				v-model="tabTarget"
-				:entries="['attributes','indexes','triggers','presets','policies','relationships','data']"
+				:entries="['attributes','properties','indexes','triggers','presets','policies','relationships','data']"
 				:entriesText="tabCaptions"
 			/>
 			
@@ -315,10 +245,106 @@ const MyBuilderRelation = {
 					@nextLanguage="$emit('nextLanguage')"
 					@new-record="attributeIdEdit = null"
 					:attributeId="attributeIdEdit"
-					:builderLanguage="builderLanguage"
-					:readonly="readonly"
-					:relation="relation"
+					:builderLanguage
+					:readonly
+					:relation
 				/>
+			</div>
+
+			<!-- properties -->
+			<div class="contentBox" v-if="tabTarget === 'properties'">
+				<div class="top lower">
+					<div class="area">
+						<my-button image="save.png"
+							@trigger="set"
+							:active="canSave"
+							:caption="capGen.button.save"
+							:captionTitle="capGen.button.save"
+						/>
+						<my-button image="refresh.png"
+							@trigger="reset(true)"
+							:active="isChanged"
+							:caption="capGen.button.refresh"
+						/>
+					</div>
+				</div>
+				
+				<div class="content default-inputs no-padding">
+					<table class="generic-table-vertical default-inputs">
+						<tbody>
+							<tr>
+								<td>{{ capGen.name }}</td>
+								<td><input class="long" v-model="relation.name" :disabled="readonly" /></td>
+								<td>{{ capApp.nameHint }}</td>
+							</tr>
+							<tr>
+								<td>{{ capGen.title }}</td>
+								<td>
+									<my-builder-caption
+										v-model="relation.captions.relationTitle"
+										:language="builderLanguage"
+										:readonly
+									/>
+								</td>
+								<td>{{ capApp.titleHint }}</td>
+							</tr>
+							<tr>
+								<td>{{ capGen.comments }}</td>
+								<td colspan="2">
+									<textarea class="dynamic"
+										@input="relation.comment = $event.target.value !== '' ? $event.target.value : null"
+										:disabled="readonly"
+										:value="relation.comment"
+									></textarea>
+								</td>
+							</tr>
+							<tr>
+								<td>{{ capApp.recordTitle }}</td>
+								<td>
+									<div class="column gap">
+										<select @input="recordTitleAttributeAdd($event.target.value)" :disabled="readonly" :value="recordTitleAttributeId">
+											<option value="">[{{ capGen.button.add }}]</option>
+											<option v-for="a in attributesRecordTitleCandidates" :value="a.id">{{ a.name }}</option>
+										</select>
+										<div class="row gap">
+											<my-button image="delete.png"
+												v-for="id in relation.attributeIdsTitle"
+												@trigger="recordTitleAttributeRemove(id)"
+												:active="!readonly"
+												:caption="attributeIdMap[id].name"
+												:naked="true"
+											/>
+										</div>
+									</div>
+								</td>
+								<td v-html="capApp.recordTitleHint.join('<br /><br />')"></td>
+							</tr>
+							<tr>
+								<td>{{ capApp.retention }}</td>
+								<td>
+									<table>
+										<tbody>
+											<tr>
+												<td>{{ capApp.retentionCount }}</td>
+												<td><my-input-decimal v-model="relation.retentionCount" :min="0" :allowNull="true" :lengthFract="0" :readonly /></td>
+											</tr>
+											<tr>
+												<td>{{ capApp.retentionDays }}</td>
+												<td><my-input-decimal v-model="relation.retentionDays" :min="0" :allowNull="true" :lengthFract="0" :readonly /></td>
+											</tr>
+										</tbody>
+									</table>
+								</td>
+								<td>{{ capApp.retentionHint }}</td>
+							</tr>
+							<tr>
+								<td>{{ capApp.encryption }}</td>
+								<td><my-bool v-model="relation.encryption" :readonly="true" /></td>
+								<td>{{ capApp.encryptionHint }}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 			</div>
 			
 			<!-- indexes -->
@@ -381,34 +407,26 @@ const MyBuilderRelation = {
 					v-if="indexIdEdit !== false"
 					@close="indexIdEdit = false"
 					:pgIndexId="indexIdEdit"
-					:builderLanguage="builderLanguage"
-					:readonly="readonly"
-					:relation="relation"
+					:builderLanguage
+					:readonly
+					:relation
 				/>
 			</div>
 			
 			<!-- triggers -->
 			<div class="tab-content" v-if="tabTarget === 'triggers'">
-				<my-builder-pg-triggers
-					:contextEntity="'relation'"
-					:contextId="relation.id"
-					:readonly="readonly"
-				/>
+				<my-builder-pg-triggers :contextEntity="'relation'" :contextId="relation.id" :readonly />
 			</div>
 			
 			<!-- presets -->
 			<div class="tab-content" v-if="tabTarget === 'presets'">
-				<my-builder-presets
-					:filter="nameFilter"
-					:relation="relation"
-					:readonly="readonly"
-				/>
+				<my-builder-presets :filter="nameFilter" :relation :readonly />
 			</div>
 			
 			<!-- policies -->
 			<div class="tab-content" v-if="tabTarget === 'policies'">
 				<table class="default-inputs">
-					<thead v-if="policies.length !== 0">
+					<thead v-if="relation.policies.length !== 0">
 						<tr>
 							<td></td>
 							<td></td>
@@ -429,20 +447,20 @@ const MyBuilderRelation = {
 					</thead>
 					<draggable handle=".dragAnchor" tag="tbody" group="policies" itemKey="id" animation="100"
 						:fallbackOnBody="true"
-						:list="policies"
+						:list="relation.policies"
 					>
 						<template #item="{element,index}">
 							<my-builder-relations-item-policy
-								@remove="policies.splice(index,1)"
-								@update:modelValue="policies[index] = $event"
+								@remove="relation.policies.splice(index,1)"
+								@update:modelValue="relation.policies[index] = $event"
 								:modelValue="element"
 								:moduleId="relation.moduleId"
-								:readonly="readonly"
+								:readonly
 							/>
 						</template>
 					</draggable>
 				</table>
-				<p style="width:900px;" v-if="policies.length !== 0">
+				<p style="width:900px;" v-if="relation.policies.length !== 0">
 					{{ capApp.policyExplanation }}
 				</p>
 				
@@ -454,7 +472,7 @@ const MyBuilderRelation = {
 					/>
 					<my-button image="save.png"
 						@trigger="set"
-						:active="!readonly && hasChanges"
+						:active="!readonly && isChanged"
 						:caption="capGen.button.save"
 						:captionTitle="capGen.button.save"
 					/>
@@ -520,8 +538,8 @@ const MyBuilderRelation = {
 	},
 	emits:['createNew','nextLanguage'],
 	watch:{
-		relation:{
-			handler() { this.reset(); },
+		relationSchema:{
+			handler() { this.reset(false); },
 			immediate:true
 		},
 		tabTarget(vNew,vOld) {
@@ -532,23 +550,19 @@ const MyBuilderRelation = {
 	data() {
 		return {
 			// inputs
-			attributeIdEdit:false,
-			comment:null,
-			encryption:false,
-			indexIdEdit:false,
-			name:'',
-			policies:[],
-			retentionCount:null,
-			retentionDays:null,
-			
+			relation:false,  // relation being edited in this component
+			relationCopy:{}, // copy of relation from schema when component last reset
+
 			// states
+			attributeIdEdit:false,
+			indexIdEdit:false,
 			nameFilter:'',
 			previewLimit:50,
 			previewOffset:0,
 			previewRows:[],
 			previewRowCount:0,
 			previewValueLength:50,
-			showProperties:false,
+			recordTitleAttributeId:'',
 			tabTarget:'attributes'
 		};
 	},
@@ -559,7 +573,20 @@ const MyBuilderRelation = {
 		window.removeEventListener('keydown',this.handleHotkeys);
 	},
 	computed:{
-		tabCaptions:(s) => {
+		attributesRecordTitleCandidates:s => {
+			let out = [];
+			for(const a of s.relation.attributes) {
+				if(!s.relation.attributeIdsTitle.includes(a.id) && a.contentUse === 'default' && (
+						s.isAttributeString(a.content) || s.isAttributeDecimal(a.content) ||
+						s.isAttributeInteger(a.content) || s.isAttributeUuid(a.content)
+					)
+				) {
+					out.push(a);
+				}
+			}
+			return out;
+		},
+		tabCaptions:s => {
 			let triggerCnt = 0;
 			for(const mod of s.modules) {
 				triggerCnt += mod.pgTriggers.filter(trg => trg.relationId === s.id).length;
@@ -567,6 +594,7 @@ const MyBuilderRelation = {
 
 			return [
 				s.capApp.attributes.replace('{CNT}',s.relation.attributes.length),
+				s.capGen.properties,
 				s.capApp.indexes.replace('{CNT}',s.relation.indexes.length),
 				s.capApp.triggers.replace('{CNT}',triggerCnt),
 				s.capApp.presets.replace('{CNT}',s.relation.presets.length),
@@ -577,7 +605,7 @@ const MyBuilderRelation = {
 		},
 
 		// relationship graph
-		graphOption:(s) => {
+		graphOption:s => {
 			let edges = [];
 			let nodes = [{ // base relation
 				id:s.relation.id,
@@ -658,37 +686,38 @@ const MyBuilderRelation = {
 				tooltip:{} // must be set
 			};
 		},
-		hasChanges:(s) => s.name          !== s.relation.name
-			|| s.comment                  !== s.relation.comment
-			|| s.encryption               !== s.relation.encryption
-			|| s.retentionCount           !== s.relation.retentionCount
-			|| s.retentionDays            !== s.relation.retentionDays
-			|| JSON.stringify(s.policies) !== JSON.stringify(s.relation.policies),
-		
+
 		// simple
-		attributesNotFiles:(s) => s.relation === false ? [] : s.relation.attributes.filter(v => !s.isAttributeFiles(v.content)),
-		canSave:           (s) => s.name !== '' && !s.readonly && s.hasChanges,
-		relation:          (s) => typeof s.relationIdMap[s.id] === 'undefined' ? false : s.relationIdMap[s.id],
+		attributesNotFiles:s => s.relation === false ? [] : s.relation.attributes.filter(v => !s.isAttributeFiles(v.content)),
+		canSave:           s => s.relation.name !== '' && !s.readonly && s.isChanged,
+		isChanged:         s => !s.deepIsEqual(s.relation,s.relationSchema),
+		relationSchema:    s => s.relationIdMap[s.id] === undefined ? false : s.relationIdMap[s.id],
 		
 		// stores
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		modules:       (s) => s.$store.getters['schema/modules'],
-		moduleIdMap:   (s) => s.$store.getters['schema/moduleIdMap'],
-		relationIdMap: (s) => s.$store.getters['schema/relationIdMap'],
-		iconIdMap:     (s) => s.$store.getters['schema/iconIdMap'],
-		capApp:        (s) => s.$store.getters.captions.builder.relation,
-		capGen:        (s) => s.$store.getters.captions.generic,
-		settings:      (s) => s.$store.getters.settings
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		modules:       s => s.$store.getters['schema/modules'],
+		moduleIdMap:   s => s.$store.getters['schema/moduleIdMap'],
+		relationIdMap: s => s.$store.getters['schema/relationIdMap'],
+		iconIdMap:     s => s.$store.getters['schema/iconIdMap'],
+		capApp:        s => s.$store.getters.captions.builder.relation,
+		capGen:        s => s.$store.getters.captions.generic,
+		settings:      s => s.$store.getters.settings
 	},
 	methods:{
 		// externals
 		copyValueDialog,
+		deepIsEqual,
+		dialogDeleteAsk,
 		getAttributeIcon,
 		getDependentAttributes,
-		getNilUuid,
+		getTemplateRelationPolicy,
+		isAttributeDecimal,
 		isAttributeFiles,
+		isAttributeInteger,
 		isAttributeRelationship,
 		isAttributeRelationship11,
+		isAttributeString,
+		isAttributeUuid,
 		isAttributeWithLength,
 		srcBase64,
 		
@@ -710,25 +739,12 @@ const MyBuilderRelation = {
 		
 		// actions
 		addPolicy() {
-			this.policies.push({
-				roleId:null,
-				pgFunctionIdExcl:null,
-				pgFunctionIdIncl:null,
-				actionDelete:false,
-				actionSelect:false,
-				actionUpdate:false
-			});
+			this.relation.policies.push(this.getTemplateRelationPolicy());
 		},
 		handleHotkeys(e) {
 			if(e.ctrlKey && e.key === 's') {
-				if(this.showProperties && this.canSave)
+				if(this.tabTarget === 'properties' && this.canSave)
 					this.set();
-
-				e.preventDefault();
-			}
-			if(e.key === 'Escape') {
-				if(this.showProperties)
-					this.showProperties = false;
 
 				e.preventDefault();
 			}
@@ -741,35 +757,28 @@ const MyBuilderRelation = {
 			this.previewOffset = 0;
 			this.getPreview();
 		},
-		reset() {
-			this.name           = this.relation.name;
-			this.comment        = this.relation.comment;
-			this.encryption     = this.relation.encryption;
-			this.retentionCount = this.relation.retentionCount;
-			this.retentionDays  = this.relation.retentionDays;
-			this.policies       = JSON.parse(JSON.stringify(this.relation.policies));
-			
-			if(this.tabTarget === 'data')
-				this.previewReload();
+		recordTitleAttributeAdd(id) {
+			this.relation.attributeIdsTitle.push(id);
+			this.recordTitleAttributeId = '';
+		},
+		recordTitleAttributeRemove(id) {
+			const pos = this.relation.attributeIdsTitle.indexOf(id);
+			if(pos !== -1)
+				this.relation.attributeIdsTitle.splice(pos,1);
+		},
+		reset(manuelReset) {
+			if(this.relationSchema !== false && (manuelReset || !this.deepIsEqual(this.relationCopy,this.relationSchema))) {
+				this.relation     = JSON.parse(JSON.stringify(this.relationSchema));
+				this.relationCopy = JSON.parse(JSON.stringify(this.relationSchema));
+
+				if(this.tabTarget === 'data')
+					this.previewReload();
+			}
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
-			ws.send('relation','del',{id:this.relation.id},true).then(
+			ws.send('relation','del',this.relation.id,true).then(
 				() => {
 					this.$root.schemaReload(this.relation.moduleId);
 					this.$router.push('/builder/relations/'+this.relation.moduleId);
@@ -791,20 +800,8 @@ const MyBuilderRelation = {
 			);
 		},
 		set() {
-			ws.send('relation','set',{
-				id:this.id,
-				moduleId:this.relation.moduleId,
-				name:this.name,
-				comment:this.comment === '' ? null : this.comment,
-				encryption:this.relation.encryption,
-				retentionCount:this.retentionCount === '' ? null : this.retentionCount,
-				retentionDays:this.retentionDays === '' ? null : this.retentionDays,
-				policies:this.policies
-			},true).then(
-				() => {
-					this.$root.schemaReload(this.relation.moduleId);
-					this.showProperties = false;
-				},
+			ws.send('relation','set',this.relation,true).then(
+				() => { this.$root.schemaReload(this.relation.moduleId); },
 				this.$root.genericError
 			);
 		}

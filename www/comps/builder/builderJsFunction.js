@@ -1,10 +1,8 @@
 import MyBuilderCaption  from './builderCaption.js';
 import MyBuilderQuery    from './builderQuery.js';
 import MyCodeEditor      from '../codeEditor.js';
+import {dialogDeleteAsk} from '../shared/dialog.js';
 import {getFieldMap}     from '../shared/form.js';
-import {copyValueDialog} from '../shared/generic.js';
-import {getJoinIndexMap} from '../shared/query.js';
-import MyTabs            from '../tabs.js';
 import {
 	getAttributeIcon,
 	isAttributeFiles
@@ -21,27 +19,28 @@ import {
 	getFieldIcon,
 	getFieldTitle
 } from '../shared/field.js';
-export {MyBuilderJsFunction as default};
+import {
+	copyValueDialog,
+	deepIsEqual
+} from '../shared/generic.js';
 
-let MyBuilderJsFunction = {
+export default {
 	name:'my-builder-js-function',
 	components:{
 		MyBuilderCaption,
 		MyBuilderQuery,
-		MyCodeEditor,
-		MyTabs
+		MyCodeEditor
 	},
-	template:`<div class="builder-function">
-		
-		<div class="contentBox grow" v-if="jsFunction">
+	template:`<div class="builder-function" v-if="fnc !== false">
+		<div class="contentBox grow">
 			<div class="top">
 				<div class="area nowrap">
 					<img class="icon" src="images/codeScreen.png" />
-					<h1 class="title">{{ capApp.titleJsOne.replace('{NAME}',name) }}</h1>
+					<h1 class="title">{{ capApp.titleJsOne.replace('{NAME}',fnc.name) }}</h1>
 				</div>
 				<div class="area">
 					<my-builder-caption
-						v-model="captions.jsFunctionTitle"
+						v-model="fnc.captions.jsFunctionTitle"
 						:contentName="capGen.title"
 						:language="builderLanguage"
 						:longInput="true"
@@ -58,12 +57,12 @@ let MyBuilderJsFunction = {
 				<div class="area nowrap">
 					<my-button image="save.png"
 						@trigger="set"
-						:active="hasChanges && !readonly"
+						:active="isChanged && !readonly"
 						:caption="capGen.button.save"
 					/>
 					<my-button image="refresh.png"
-						@trigger="reset"
-						:active="hasChanges"
+						@trigger="reset(true)"
+						:active="isChanged"
 						:caption="capGen.button.refresh"
 					/>
 					<my-button
@@ -74,11 +73,11 @@ let MyBuilderJsFunction = {
 				</div>
 				<div class="area nowrap">
 					<my-button image="visible1.png"
-						@trigger="copyValueDialog(name,id,id)"
+						@trigger="copyValueDialog(fnc.name,id,id)"
 						:caption="capGen.id"
 					/>
 					<my-button image="delete.png"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!readonly"
 						:cancel="true"
 						:caption="capGen.button.delete"
@@ -89,7 +88,7 @@ let MyBuilderJsFunction = {
 			
 			<div class="content no-padding function-details">
 				<my-code-editor mode="javascript"
-					v-model="codeFunction"
+					v-model="fncBody"
 					@clicked="entityId = null"
 					:insertEntity="insertEntity"
 					:modelValueAlt="!showPreview ? '' : preview"
@@ -98,7 +97,7 @@ let MyBuilderJsFunction = {
 			</div>
 		</div>
 		
-		<div class="contentBox sidebar right" v-if="jsFunction && showSidebar">
+		<div class="contentBox sidebar right" v-if="showSidebar">
 			<div class="top lower">
 				<div class="area nowrap">
 					<h1 class="title">{{ capGen.settings }}</h1>
@@ -109,7 +108,7 @@ let MyBuilderJsFunction = {
 				v-model="tabTarget"
 				:entries="['content','properties']"
 				:entriesIcon="['images/database.png','images/edit.png']"
-				:entriesText="[capApp.placeholders,capGen.properties]"
+				:entriesText="[capGen.placeholders,capGen.properties]"
 			/>
 			
 			<div class="content default-inputs" :class="{ 'no-padding':tabTarget !== 'content' }">
@@ -128,21 +127,16 @@ let MyBuilderJsFunction = {
 							</router-link>
 						</div>
 						
-						<div class="placeholders" v-if="form.query.joins.length !== 0">
+						<div class="placeholders" v-if="form.query !== null">
 							<my-builder-query
 								:allowChoices="false"
 								:allowFixedLimit="false"
 								:allowFilters="false"
 								:allowJoinEdit="false"
-								:builderLanguage="builderLanguage"
-								:choices="form.query.choices"
-								:filters="form.query.filters"
-								:fixedLimit="0"
-								:joins="form.query.joins"
-								:lookups="form.query.lookups"
+								:builderLanguage
+								:modelValue="form.query"
 								:moduleId="form.moduleId"
-								:orders="form.query.orders"
-								:relationId="form.query.relationId"
+								:readonly
 							/>
 						</div>
 						
@@ -363,24 +357,24 @@ let MyBuilderJsFunction = {
 						</div>
 					</div>
 					<div class="entities" v-if="showHolderFncFrontend">
-						<div class="entity" v-for="fnc in jsFunctionsSorted.filter(v => holderFncFrontendFilter === '' || v.name.toLowerCase().includes(holderFncFrontendFilter.toLowerCase()))">
+						<div class="entity" v-for="f in jsFunctionsSorted.filter(v => holderFncFrontendFilter === '' || v.name.toLowerCase().includes(holderFncFrontendFilter.toLowerCase()))">
 							<div class="entity-title">
 								<my-button
-									@trigger="selectEntity('jsFunction',fnc.id)"
+									@trigger="selectEntity('jsFunction',f.id)"
 									:adjusts="true"
-									:caption="fnc.formId === null ? '[' + capGen.global + '] ' + fnc.name : fnc.name"
-									:captionTitle="fnc.name"
-									:image="radioIcon('jsFunction',fnc.id)"
+									:caption="f.formId === null ? '[' + capGen.global + '] ' + f.name : f.name"
+									:captionTitle="f.name"
+									:image="radioIcon('jsFunction',f.id)"
 									:naked="true"
 								/>
 								<div class="row gap centered">
 									<my-button image="question.png"
-										@trigger="showHelp(fnc.name+'()',getFunctionHelp('js',fnc,builderLanguage))"
-										:active="getFunctionHelp('js',fnc,builderLanguage) !== ''"
+										@trigger="showHelp(f.name+'()',getFunctionHelp('js',f,builderLanguage))"
+										:active="getFunctionHelp('js',f,builderLanguage) !== ''"
 										:captionTitle="capGen.help"
 										:naked="true"
 									/>
-									<router-link :key="fnc.id" :to="'/builder/js-function/'+fnc.id">
+									<router-link :key="f.id" :to="'/builder/js-function/'+f.id">
 										<my-button image="open.png" :captionTitle="capGen.button.open" :naked="true" />
 									</router-link>
 								</div>
@@ -407,24 +401,24 @@ let MyBuilderJsFunction = {
 						</div>
 					</div>
 					<div class="entities" v-if="showHolderFncBackend">
-						<div class="entity" v-for="fnc in moduleIdMap[holderFncBackendModuleId].pgFunctions.filter(v => v.isFrontendExec && (holderFncBackendFilter === '' || v.name.toLowerCase().includes(holderFncBackendFilter.toLowerCase())))">
+						<div class="entity" v-for="f in moduleIdMap[holderFncBackendModuleId].pgFunctions.filter(v => v.isFrontendExec && (holderFncBackendFilter === '' || v.name.toLowerCase().includes(holderFncBackendFilter.toLowerCase())))">
 							<div class="entity-title">
 								<my-button
-									@trigger="selectEntity('pgFunction',fnc.id)"
+									@trigger="selectEntity('pgFunction',f.id)"
 									:adjusts="true"
-									:caption="fnc.name"
-									:captionTitle="fnc.name"
-									:image="radioIcon('pgFunction',fnc.id)"
+									:caption="f.name"
+									:captionTitle="f.name"
+									:image="radioIcon('pgFunction',f.id)"
 									:naked="true"
 								/>
 								<div class="row gap centered">
 									<my-button image="question.png"
-										@trigger="showHelp(fnc.name+'()',getFunctionHelp('pg',fnc,builderLanguage))"
-										:active="getFunctionHelp('pg',fnc,builderLanguage) !== ''"
+										@trigger="showHelp(f.name+'()',getFunctionHelp('pg',f,builderLanguage))"
+										:active="getFunctionHelp('pg',f,builderLanguage) !== ''"
 										:captionTitle="capGen.help"
 										:naked="true"
 									/>
-									<router-link :key="fnc.id" :to="'/builder/pg-function/'+fnc.id">
+									<router-link :key="f.id" :to="'/builder/pg-function/'+f.id">
 										<my-button image="open.png" :captionTitle="capGen.button.open" :naked="true" />
 									</router-link>
 								</div>
@@ -443,18 +437,18 @@ let MyBuilderJsFunction = {
 						/>
 					</div>
 					<div class="entities" v-if="showHolderFncInstance">
-						<div class="entity" v-for="fnc in appFunctions.filter(v => !isClientEventExec || appFunctionsClientEvent.includes(v))">
+						<div class="entity" v-for="f in appFunctions.filter(v => !fnc.isClientEventExec || appFunctionsClientEvent.includes(v))">
 							<div class="entity-title">
 								<my-button
-									@trigger="selectEntity('appFunction',fnc)"
+									@trigger="selectEntity('appFunction',f)"
 									:adjusts="true"
-									:caption="fnc"
-									:captionTitle="fnc"
-									:image="radioIcon('appFunction',fnc)"
+									:caption="f"
+									:captionTitle="f"
+									:image="radioIcon('appFunction',f)"
 									:naked="true"
 								/>
 								<my-button image="question.png"
-									@trigger="showHelp(fnc+'()',capApp.helpJs[fnc],capApp.helpJsArgs[fnc])"
+									@trigger="showHelp(f+'()',capApp.helpJs[f],capApp.helpJsArgs[f])"
 									:captionTitle="capGen.help"
 									:naked="true"
 								/>
@@ -516,15 +510,15 @@ let MyBuilderJsFunction = {
 						<tbody>
 							<tr>
 								<td>{{ capGen.name }}</td>
-								<td><input v-model="name" :disabled="readonly" /></td>
+								<td><input v-model="fnc.name" :disabled="readonly" /></td>
 							</tr>
 							<tr>
 								<td>{{ capGen.title }}</td>
 								<td>
 									<my-builder-caption
-										v-model="captions.jsFunctionTitle"
+										v-model="fnc.captions.jsFunctionTitle"
 										:language="builderLanguage"
-										:readonly="readonly"
+										:readonly
 									/>
 								</td>
 							</tr>
@@ -532,10 +526,10 @@ let MyBuilderJsFunction = {
 								<td>{{ capGen.description }}</td>
 								<td>
 									<my-builder-caption
-										v-model="captions.jsFunctionDesc"
+										v-model="fnc.captions.jsFunctionDesc"
 										:language="builderLanguage"
 										:multiLine="true"
-										:readonly="readonly"
+										:readonly
 									/>
 								</td>
 							</tr>
@@ -543,7 +537,7 @@ let MyBuilderJsFunction = {
 								<td>{{ capApp.codeArgs }}</td>
 								<td>
 									<textarea
-										v-model="codeArgs"
+										v-model="fnc.codeArgs"
 										:disabled="readonly"
 										:placeholder="capApp.codeArgsHintJs"
 									></textarea>
@@ -553,29 +547,29 @@ let MyBuilderJsFunction = {
 								<td>{{ capApp.codeReturns }}</td>
 								<td>
 									<input
-										v-model="codeReturns"
+										v-model="fnc.codeReturns"
 										:disabled="readonly"
 										:placeholder="capApp.codeReturnsHintJs"
 									/>
 								</td>
 							</tr>
-							<tr v-if="formId === null">
+							<tr v-if="fnc.formId === null">
 								<td>{{ capGen.clientEvent }}</td>
-								<td><my-bool v-model="isClientEventExec" :readonly="readonly" /></td>
+								<td><my-bool v-model="fnc.isClientEventExec" :readonly /></td>
 							</tr>
-							<tr v-if="formId !== null">
+							<tr v-if="fnc.formId !== null">
 								<td>{{ capApp.form }}</td>
 								<td>
 									<div class="row centered gap">
-										<select v-model="formId" disabled>
+										<select v-model="fnc.formId" disabled>
 											<option :value="null">-</option>
-											<option v-for="f in moduleIdMap[jsFunction.moduleId].forms" :value="f.id">
+											<option v-for="f in moduleIdMap[fnc.moduleId].forms" :value="f.id">
 												{{ f.name }}
 											</option>
 										</select>
 										<my-button image="open.png"
 											@trigger="openForm"
-											:active="formId !== null"
+											:active="fnc.formId !== null"
 										/>
 									</div>
 								</td>
@@ -592,8 +586,8 @@ let MyBuilderJsFunction = {
 		readonly:       { type:Boolean, required:true }
 	},
 	watch:{
-		jsFunction:{
-			handler() { this.reset(); },
+		fncSchema:{
+			handler() { this.reset(false); },
 			immediate:true
 		}
 	},
@@ -611,32 +605,30 @@ let MyBuilderJsFunction = {
 	},
 	data() {
 		return {
-			name:'',
-			formId:null,
-			captions:{},
-			codeArgs:'',
-			codeFunction:'',
-			codeReturns:'',
-			isClientEventExec:false,
+			// inputs
+			fnc:false,  // function being edited in this component
+			fncCopy:{}, // copy of function from schema when component last reset
+
+			// states
 			appFunctions:[
 				'block_inputs','client_execute_keystrokes','copy_to_clipboard','dialog_show',
 				'form_close','form_parent_refresh','form_open','form_set_title','form_show_message',
 				'get_e2ee_data_key','get_e2ee_data_value','get_language_code','get_record_id',
-				'get_role_ids','get_url_query_string','get_user_id','go_back','has_role','logoff',
-				'pdf_create','record_delete','record_new','record_reload','record_save','record_save_new',
-				'set_e2ee_by_user_ids','set_e2ee_by_user_ids_and_relation','timer_clear',
-				'timer_clear_global','timer_set','timer_set_global'
+				'get_role_ids','get_url_query_string','get_user_id','global_search_start','go_back',
+				'has_role','logoff','pdf_create','pdf_create_utf8','record_delete','record_new',
+				'record_reload','record_save','record_save_new','set_e2ee_by_user_ids',
+				'set_e2ee_by_user_ids_and_relation','timer_clear','timer_clear_global','timer_set',
+				'timer_set_global','url_open_as_tab','url_open_as_window'
 			],
 			appFunctionsAsync:[
-				'dialog_show','get_e2ee_data_key','get_e2ee_data_value','pdf_create'
+				'dialog_show','get_e2ee_data_key','get_e2ee_data_value','pdf_create','pdf_create_utf8'
 			],
 			appFunctionsClientEvent:[
 				'client_execute_keystrokes','copy_to_clipboard','form_open',
 				'get_url_query_string','get_language_code','get_role_ids','get_user_id',
-				'go_back','has_role','pdf_create','timer_clear_global','timer_set_global'
+				'go_back','has_role','pdf_create','pdf_create_utf8','timer_clear_global',
+				'timer_set_global'
 			],
-			
-			// states
 			entity:'', // selected placeholder entity
 			entityId:null,
 			entityJsModuleId:null,
@@ -669,7 +661,7 @@ let MyBuilderJsFunction = {
 		};
 	},
 	computed:{
-		fieldsSorted:(s) => {
+		fieldsSorted:s => {
 			let out = [];
 			for(let id in s.entityIdMapRef.field) {
 				const f = s.fieldIdMap[id];
@@ -686,7 +678,7 @@ let MyBuilderJsFunction = {
 			}
 			return out.sort((a, b) => a.ref - b.ref);
 		},
-		variablesSorted:(s) => {
+		variablesSorted:s => {
 			let out = [];
 			const addVariable = v => {
 				v.icon = getAttributeIcon(v.content,v.contentUse,false,false);
@@ -695,7 +687,7 @@ let MyBuilderJsFunction = {
 
 			// form assigned variables
 			for(const v of s.moduleIdMap[s.module.id].variables) {
-				if(v.formId === s.formId && s.formId !== null)
+				if(v.formId === s.fnc.formId && s.fnc.formId !== null)
 					addVariable(v);
 			}
 			// global variables
@@ -705,14 +697,7 @@ let MyBuilderJsFunction = {
 			}
 			return out;
 		},
-		hasChanges:(s) => s.name     !== s.jsFunction.name
-			|| s.codeArgs            !== s.jsFunction.codeArgs
-			|| s.codeFunction        !== s.placeholdersSet(s.jsFunction.codeFunction)
-			|| s.codeReturns         !== s.jsFunction.codeReturns
-			|| s.isClientEventExec   !== s.jsFunction.isClientEventExec
-			|| JSON.stringify(s.captions) !== JSON.stringify(s.jsFunction.captions),
-			
-		insertEntity:(s) => {
+		insertEntity:s => {
 			if(s.entityId === null)
 				return null;
 			
@@ -794,38 +779,46 @@ let MyBuilderJsFunction = {
 			}
 			return text;
 		},
-		jsFunctionsSorted:(s) => s.moduleIdMap[s.holderFncFrontendModuleId].jsFunctions.filter(v => v.formId === s.formId && s.formId !== null).concat(
+		jsFunctionsSorted:s => s.moduleIdMap[s.holderFncFrontendModuleId].jsFunctions.filter(v => v.formId === s.fnc.formId && s.fnc.formId !== null).concat(
 			s.moduleIdMap[s.holderFncFrontendModuleId].jsFunctions.filter(v => v.formId === null)),
 		
+		// inputs
+		fncBody:{
+			get()  { return this.placeholdersSet(this.fnc.codeFunction); },
+			set(v) { this.fnc.codeFunction = this.placeholdersUnset(v); }
+		},
+
 		// simple
-		entityIdMapRef:    (s) => s.formId === null ? {} : s.getFormEntityMapRef(s.form.fields,s.form.actions),
-		fieldIdMap:        (s) => s.formId === null ? {} : s.getFieldMap(s.formIdMap[s.formId].fields),
-		form:              (s) => s.formId === null ? false : s.formIdMap[s.formId],
-		joinsIndexMap:     (s) => s.form !== false ? s.getJoinIndexMap(s.form.query.joins) : {},
-		jsFunction:        (s) => s.jsFunctionIdMap[s.id] === undefined ? false : s.jsFunctionIdMap[s.id],
-		module:            (s) => s.jsFunction === false ? false : s.moduleIdMap[s.jsFunction.moduleId],
-		modulesData:       (s) => s.getDependentModules(s.module).filter(v => v.relations.length !== 0),
-		modulesFncBackend: (s) => s.getDependentModules(s.module).filter(v => v.id === s.module.id || v.pgFunctions.filter(v => v.isFrontendExec).length !== 0),
-		modulesFncFrontend:(s) => s.getDependentModules(s.module).filter(v => v.id === s.module.id || v.jsFunctions.length !== 0),
-		preview:           (s) => !s.showPreview ? '' : s.placeholdersUnset(),
+		entityIdMapRef:    s => s.fnc.formId === null ? {} : s.getFormEntityMapRef(s.form.fields,s.form.actions),
+		fieldIdMap:        s => s.fnc.formId === null ? {} : s.getFieldMap(s.formIdMap[s.fnc.formId].fields),
+		fncSchema:         s => s.jsFunctionIdMap[s.id] === undefined ? false : s.jsFunctionIdMap[s.id],
+		form:              s => s.fnc.formId === null ? false : s.formIdMap[s.fnc.formId],
+		isChanged:         s => !s.deepIsEqual(s.fnc,s.fncSchema),
+		module:            s => s.fnc === false ? false : s.moduleIdMap[s.fnc.moduleId],
+		modulesData:       s => s.getDependentModules(s.module).filter(v => v.relations.length !== 0),
+		modulesFncBackend: s => s.getDependentModules(s.module).filter(v => v.id === s.module.id || v.pgFunctions.filter(v => v.isFrontendExec).length !== 0),
+		modulesFncFrontend:s => s.getDependentModules(s.module).filter(v => v.id === s.module.id || v.jsFunctions.length !== 0),
+		preview:           s => !s.showPreview ? '' : s.placeholdersUnset(s.fncBody),
 		
 		// stores
-		moduleIdMap:    (s) => s.$store.getters['schema/moduleIdMap'],
-		moduleNameMap:  (s) => s.$store.getters['schema/moduleNameMap'],
-		relationIdMap:  (s) => s.$store.getters['schema/relationIdMap'],
-		presetIdMap:    (s) => s.$store.getters['schema/presetIdMap'],
-		attributeIdMap: (s) => s.$store.getters['schema/attributeIdMap'],
-		collectionIdMap:(s) => s.$store.getters['schema/collectionIdMap'],
-		formIdMap:      (s) => s.$store.getters['schema/formIdMap'],
-		jsFunctionIdMap:(s) => s.$store.getters['schema/jsFunctionIdMap'],
-		pgFunctionIdMap:(s) => s.$store.getters['schema/pgFunctionIdMap'],
-		variableIdMap:  (s) => s.$store.getters['schema/variableIdMap'],
-		capApp:         (s) => s.$store.getters.captions.builder.function,
-		capGen:         (s) => s.$store.getters.captions.generic
+		moduleIdMap:    s => s.$store.getters['schema/moduleIdMap'],
+		moduleNameMap:  s => s.$store.getters['schema/moduleNameMap'],
+		relationIdMap:  s => s.$store.getters['schema/relationIdMap'],
+		presetIdMap:    s => s.$store.getters['schema/presetIdMap'],
+		attributeIdMap: s => s.$store.getters['schema/attributeIdMap'],
+		collectionIdMap:s => s.$store.getters['schema/collectionIdMap'],
+		formIdMap:      s => s.$store.getters['schema/formIdMap'],
+		jsFunctionIdMap:s => s.$store.getters['schema/jsFunctionIdMap'],
+		pgFunctionIdMap:s => s.$store.getters['schema/pgFunctionIdMap'],
+		variableIdMap:  s => s.$store.getters['schema/variableIdMap'],
+		capApp:         s => s.$store.getters.captions.builder.function,
+		capGen:         s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
 		copyValueDialog,
+		deepIsEqual,
+		dialogDeleteAsk,
 		getAttributeIcon,
 		getDependentModules,
 		getFieldIcon,
@@ -835,7 +828,6 @@ let MyBuilderJsFunction = {
 		getFunctionHelp,
 		getItemTitle,
 		getItemTitlePath,
-		getJoinIndexMap,
 		getValidDbCharsForRx,
 		isAttributeFiles,
 		
@@ -850,16 +842,13 @@ let MyBuilderJsFunction = {
 		
 		// actions
 		openForm() {
-			this.$router.push('/builder/form/'+this.formId);
+			this.$router.push('/builder/form/'+this.fnc.formId);
 		},
-		reset() {
-			this.name              = this.jsFunction.name;
-			this.formId            = this.jsFunction.formId;
-			this.codeArgs          = this.jsFunction.codeArgs;
-			this.codeFunction      = this.placeholdersSet(this.jsFunction.codeFunction);
-			this.codeReturns       = this.jsFunction.codeReturns;
-			this.isClientEventExec = this.jsFunction.isClientEventExec;
-			this.captions          = JSON.parse(JSON.stringify(this.jsFunction.captions));
+		reset(manuelReset) {
+			if(this.fncSchema !== false && (manuelReset || !this.deepIsEqual(this.fncCopy,this.fncSchema))) {
+				this.fnc     = JSON.parse(JSON.stringify(this.fncSchema));
+				this.fncCopy = JSON.parse(JSON.stringify(this.fncSchema));
+			}
 		},
 		selectEntity(entity,id) {
 			if(entity === this.entity && id === this.entityId)
@@ -993,8 +982,7 @@ let MyBuilderJsFunction = {
 			});
 			return body;
 		},
-		placeholdersUnset() {
-			let body    = this.codeFunction;
+		placeholdersUnset(body) {
 			let dbChars = this.getValidDbCharsForRx();
 			let prefix  = 'app';
 			let pat;
@@ -1153,42 +1141,18 @@ let MyBuilderJsFunction = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
-			ws.send('jsFunction','del',{id:this.jsFunction.id},true).then(
+			ws.send('jsFunction','del',this.fnc.id,true).then(
 				() => {
-					this.$root.schemaReload(this.jsFunction.moduleId);
-					this.$router.push('/builder/js-functions/'+this.jsFunction.moduleId);
+					this.$root.schemaReload(this.fnc.moduleId);
+					this.$router.push('/builder/js-functions/'+this.fnc.moduleId);
 				},
 				this.$root.genericError
 			);
 		},
 		set() {
 			ws.sendMultiple([
-				ws.prepare('jsFunction','set',{
-					id:this.jsFunction.id,
-					moduleId:this.jsFunction.moduleId,
-					formId:this.jsFunction.formId,
-					name:this.name,
-					codeArgs:this.codeArgs,
-					codeFunction:this.placeholdersUnset(),
-					codeReturns:this.codeReturns,
-					isClientEventExec:this.isClientEventExec,
-					captions:this.captions
-				}),
+				ws.prepare('jsFunction','set',this.fnc),
 				ws.prepare('schema','check',{moduleId:this.module.id})
 			],true).then(
 				() => this.$root.schemaReload(this.module.id),

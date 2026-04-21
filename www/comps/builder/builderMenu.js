@@ -3,13 +3,16 @@ import MyBuilderCollectionInput        from './builderCollectionInput.js';
 import MyBuilderFormInput              from './builderFormInput.js';
 import MyBuilderIconInput              from './builderIconInput.js';
 import MyBuilderMenuTabSelect          from './builderMenuTabSelect.js';
-import {getCollectionConsumerTemplate} from '../shared/collection.js';
 import {getDependentModules}           from '../shared/builder.js';
-import {getNilUuid}                    from '../shared/generic.js';
+import {getUuidV4}                     from '../shared/crypto.js';
 import {getCaptionForLang}             from '../shared/language.js';
-export {MyBuilderMenu as default};
+import {
+	getTemplateCollectionConsumer,
+	getTemplateMenu,
+	getTemplateMenuTab
+} from '../shared/builderTemplate.js';
 
-let MyBuilderMenuItems = {
+const MyBuilderMenuItems = {
 	name:'my-builder-menu-items',
 	components:{
 		'chrome-picker':VueColor.Chrome,
@@ -127,7 +130,7 @@ let MyBuilderMenuItems = {
 											<div class="column gap">
 												<span>{{ capApp.collections }}</span>
 												<my-button image="add.png"
-													@trigger="element.collections.push(getCollectionConsumerTemplate())"
+													@trigger="element.collections.push(getTemplateCollectionConsumer())"
 													:active="!readonly"
 													:caption="capGen.button.add"
 													:naked="true"
@@ -144,8 +147,8 @@ let MyBuilderMenuItems = {
 												:consumer="c"
 												:fixedCollection="false"
 												:flagsEnable="['noDisplayEmpty','showRowCount']"
-												:module="module"
-												:readonly="readonly"
+												:module
+												:readonly
 												:showOnMobile="true"
 											/>
 										</td>
@@ -195,8 +198,7 @@ let MyBuilderMenuItems = {
 	},
 	methods:{
 		// externals
-		getCollectionConsumerTemplate,
-		getNilUuid,
+		getTemplateCollectionConsumer,
 		
 		// presentation
 		colorStyle(color) {
@@ -214,7 +216,7 @@ let MyBuilderMenuItems = {
 	}
 };
 
-let MyBuilderMenuTabOptions = {
+const MyBuilderMenuTabOptions = {
 	name:'my-builder-menu-tab-options',
 	components:{
 		MyBuilderCaption,
@@ -229,6 +231,7 @@ let MyBuilderMenuTabOptions = {
 						@update:modelValue="set('captions',{menuTabTitle:$event})"
 						:language="builderLanguage"
 						:modelValue="modelValue.captions.menuTabTitle"
+						:readonly
 					/>
 				</td>
 			</tr>
@@ -238,17 +241,19 @@ let MyBuilderMenuTabOptions = {
 					<my-builder-icon-input
 						@input="set('iconId',$event)"
 						:icon-id-selected="modelValue.iconId"
-						:module="module"
+						:module
 						:title="capGen.icon"
+						:readonly
 					/>
 				</td>
 			</tr>
 		</tbody>
 	</table>`,
 	props:{
-		builderLanguage:{ type:String, required:true },
-		module:         { type:Object, required:true },
-		modelValue:     { type:Object, required:true }
+		builderLanguage:{ type:String,  required:true },
+		module:         { type:Object,  required:true },
+		modelValue:     { type:Object,  required:true },
+		readonly:       { type:Boolean, required:true }
 	},
 	emits:['update:modelValue'],
 	computed:{
@@ -263,7 +268,7 @@ let MyBuilderMenuTabOptions = {
 	}
 };
 
-let MyBuilderMenu = {
+export default {
 	name:'my-builder-menu',
 	components:{
 		MyBuilderMenuItems,
@@ -326,11 +331,11 @@ let MyBuilderMenu = {
 					<div class="row gap">
 						<my-button image="pagePrev.png"
 							@trigger="moveTab(false)"
-							:active="menuTabsIndexShown !== 0"
+							:active="menuTabsIndexShown !== 0 && !readonly"
 						/>
 						<my-button image="pageNext.png"
 							@trigger="moveTab(true)"
-							:active="menuTabsIndexShown !== menuTabs.length-1"
+							:active="menuTabsIndexShown !== menuTabs.length-1 && !readonly"
 						/>
 						<my-button image="delete.png"
 							@trigger="del"
@@ -345,6 +350,7 @@ let MyBuilderMenu = {
 					v-model="menuTabShown"
 					:builderLanguage="builderLanguage"
 					:module="module"
+					:readonly
 				/>
 				
 				<!-- actions -->
@@ -385,8 +391,6 @@ let MyBuilderMenu = {
 		return {
 			copyMenuTabId:null,
 			copyModuleId:null,
-			newCntEntry:0, // temporary menu IDs, replaced with NULL UUIDs on SET
-			newCntTab:0,   // temporary menu tab IDs, replaced with NULL UUIDs on SET
 			menuTabs:[],
 			menuTabsIndexShown:0,
 			menuTabIdsRemoved:[]
@@ -434,40 +438,23 @@ let MyBuilderMenu = {
 		// externals
 		getCaptionForLang,
 		getDependentModules,
-		getNilUuid,
+		getTemplateMenu,
+		getTemplateMenuTab,
+		getUuidV4,
 		
 		// actions
 		addEntry() {
-			this.menuTabs[this.menuTabsIndexShown].menus.unshift({
-				id:this.newCntEntry++,
-				formId:null,
-				iconId:null,
-				menus:[],
-				showChildren:false,
-				color:null,
-				collections:[],
-				captions:{
-					menuTitle:{}
-				}
-			});
+			this.menuTabs[this.menuTabsIndexShown].menus.unshift(this.getTemplateMenu());
 		},
 		addTab() {
-			this.menuTabs.push({
-				id:this.newCntTab++,
-				moduleId:this.module.id,
-				iconId:null,
-				menus:[],
-				captions:{
-					menuTabTitle:{}
-				}
-			});
+			this.menuTabs.push(this.getTemplateMenuTab(this.module.id));
 		},
 		copy() {
 			const mod = this.moduleIdMap[this.copyModuleId];
 			for(const mt of mod.menuTabs) {
 				if(mt.id === this.copyMenuTabId) {
-					return this.menuTabs[this.menuTabsIndexShown].menus = this.replaceMenuIdsNested(
-						this.menuTabs[this.menuTabsIndexShown].menus.concat(JSON.parse(JSON.stringify(mt.menus))),false);
+					return this.menuTabs[this.menuTabsIndexShown].menus = this.replaceIdsForCopy(
+						this.menuTabs[this.menuTabsIndexShown].menus.concat(JSON.parse(JSON.stringify(mt.menus))));
 				}
 			}
 		},
@@ -476,22 +463,15 @@ let MyBuilderMenu = {
 			this.menuTabs.splice(newIndex, 0, this.menuTabs.splice(this.menuTabsIndexShown,1)[0]);
 			this.menuTabsIndexShown = newIndex;
 		},
-		replaceMenuIdsNested(menus,newToNilUuid) {
+		replaceIdsForCopy(menus) {
 			for(let i = 0, j = menus.length; i < j; i++) {
 
-				// replace temporary counter IDs with NULL UUIDs (for SET of new menu entries)
-				if(newToNilUuid && Number.isInteger(menus[i].id))
-					menus[i].id = this.getNilUuid();
-
-				// replace existing UUIDs with temporary counter IDs (for menu copy)
-				if(!newToNilUuid && !Number.isInteger(menus[i].id))
-					menus[i].id = this.newCntEntry++;
-
-				// replace collection consumer IDs with NULL UUIDs to create new ones
+				// replace menu & collection consumer UUIDs with new ones
+				menus[i].id = this.getUuidV4();
 				for(let ci = 0, cj = menus[i].collections.length; ci < cj; ci++) {
-					menus[i].collections[ci].id = this.getNilUuid();
+					menus[i].collections[ci].id = this.getUuidV4();
 				}
-				menus[i].menus = this.replaceMenuIdsNested(menus[i].menus,newToNilUuid);
+				menus[i].menus = this.replaceIdsForCopy(menus[i].menus);
 			}
 			return menus;
 		},
@@ -510,22 +490,14 @@ let MyBuilderMenu = {
 		
 		// backend functions
 		del() {
-			if(!Number.isInteger(this.menuTabs[this.menuTabsIndexShown].id))
-				this.menuTabIdsRemoved.push(this.menuTabs[this.menuTabsIndexShown].id);
-
+			this.menuTabIdsRemoved.push(this.menuTabs[this.menuTabsIndexShown].id);
 			this.menuTabs.splice(this.menuTabsIndexShown,1);
 			this.switchToValidMenuTab();
 		},
 		set() {
 			let requests = [];
 			for(let i = 0, j = this.menuTabs.length; i < j; i++) {
-				let mt   = JSON.parse(JSON.stringify(this.menuTabs[i]));
-				mt.menus = this.replaceMenuIdsNested(mt.menus,true);
-
-				if(Number.isInteger(mt.id))
-					mt.id = this.getNilUuid();
-
-				requests.push(ws.prepare('menuTab','set',{menuTab:mt,position:i}));
+				requests.push(ws.prepare('menuTab','set',{menuTab:this.menuTabs[i],position:i}));
 			}
 			for(const id of this.menuTabIdsRemoved) {
 				requests.push(ws.prepare('menuTab','del',id));

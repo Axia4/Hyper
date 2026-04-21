@@ -1,11 +1,11 @@
 import MyAdminLoginMeta        from './adminLoginMeta.js';
 import MyAdminLoginRolesAssign from './adminLoginRolesAssign.js';
 import MyInputDateWrap         from '../inputDateWrap.js';
+import {dialogDeleteAsk}       from '../shared/dialog.js';
 import {deepIsEqual}           from '../shared/generic.js';
 import {getUnixNowDate}        from '../shared/time.js';
-export {MyAdminOauthClient as default};
 
-let MyAdminOauthClient = {
+export default {
 	name:'my-admin-oauth-client',
 	components:{
 		MyAdminLoginMeta,
@@ -37,7 +37,7 @@ let MyAdminOauthClient = {
 					<my-button image="refresh.png"
 						v-if="!isNew"
 						@trigger="reset"
-						:active="hasChanges"
+						:active="isChanged"
 						:caption="capGen.button.refresh"
 					/>
 					<my-button image="add.png"
@@ -50,7 +50,7 @@ let MyAdminOauthClient = {
 				<div class="area">
 					<my-button image="delete.png"
 						v-if="!isNew"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!readonly"
 						:cancel="true"
 						:caption="capGen.button.delete"
@@ -160,6 +160,24 @@ let MyAdminOauthClient = {
 								<td>{{ capApp.claimUsernameHint }}</td>
 							</tr>
 							<tr>
+								<td>{{ capApp.claimAdmin }}</td>
+								<td>
+									<div class="column gap">
+										<input v-model="inputs.claimAdmin"      :disabled="readonly" :placeholder="capGen.name" />
+										<input v-model="inputs.claimAdminValue" :disabled="readonly" :placeholder="capGen.valueExpected" />
+										<div class="row">
+											<my-button image="cancel.png"
+												@trigger="inputs.claimAdmin = null; inputs.claimAdminValue = null"
+												:active="inputs.claimAdmin !== null && inputs.claimAdmin !== ''"
+												:cancel="true"
+												:caption="capGen.button.clear"
+											/>
+										</div>
+									</div>
+								</td>
+								<td>{{ capApp.claimAdminHint }}</td>
+							</tr>
+							<tr>
 								<td>{{ capApp.claimRoles }}</td>
 								<td colspan="2">
 									<div class="column gap">
@@ -219,10 +237,10 @@ let MyAdminOauthClient = {
 		};
 	},
 	computed:{
-		canSave:(s) =>
+		canSave:s =>
 			s.ready &&
 			!s.readonly &&
-			s.hasChanges &&
+			s.isChanged &&
 			s.inputs.name          !== '' &&
 			s.inputs.clientId      !== '' &&
 			s.inputs.clientSecret  !== '' &&
@@ -231,7 +249,7 @@ let MyAdminOauthClient = {
 			(!s.isFlowAuthCodePkce || s.inputs.providerUrl !== '') &&
 			(!s.isFlowAuthCodePkce || s.inputs.redirectUrl !== '') &&
 			(!s.isFlowClientCreds  || s.isTokenUrlSet),
-		inputsOrg:(s) => s.isNew ? {
+		inputsOrg:s => s.isNew ? {
 			id:0,
 			name:'',
 			flow:'authCodePkce',
@@ -242,6 +260,8 @@ let MyAdminOauthClient = {
 			loginTemplateId:null,
 			loginMetaMap:{},
 			loginRolesAssign:[],
+			claimAdmin:null,
+			claimAdminValue:null,
 			claimRoles:null,
 			claimUsername:null,
 			providerUrl:null,
@@ -249,17 +269,17 @@ let MyAdminOauthClient = {
 			tokenUrl:null
 		} : s.oauthClientIdMap[s.id],
 		
-		// simple states
-		hasChanges:        (s) => !s.deepIsEqual(s.inputsOrg,s.inputs),
-		isClaimRolesSet:   (s) => s.inputs.claimRoles !== null && s.inputs.claimRoles !== '',
-		isFlowAuthCodePkce:(s) => s.inputs.flow === 'authCodePkce',
-		isFlowClientCreds: (s) => s.inputs.flow === 'clientCreds',
-		isTokenUrlSet:     (s) => s.inputs.tokenUrl   !== null && s.inputs.tokenUrl   !== '',
-		isNew:             (s) => s.id === 0,
+		// simple
+		isChanged:         s => !s.deepIsEqual(s.inputsOrg,s.inputs),
+		isClaimRolesSet:   s => s.inputs.claimRoles !== null && s.inputs.claimRoles !== '',
+		isFlowAuthCodePkce:s => s.inputs.flow === 'authCodePkce',
+		isFlowClientCreds: s => s.inputs.flow === 'clientCreds',
+		isTokenUrlSet:     s => s.inputs.tokenUrl   !== null && s.inputs.tokenUrl   !== '',
+		isNew:             s => s.id === 0,
 		
 		// stores
-		capApp:(s) => s.$store.getters.captions.admin.oauthClient,
-		capGen:(s) => s.$store.getters.captions.generic
+		capApp:s => s.$store.getters.captions.admin.oauthClient,
+		capGen:s => s.$store.getters.captions.generic
 	},
 	mounted() {
 		this.$store.commit('keyDownHandlerSleep');
@@ -274,6 +294,7 @@ let MyAdminOauthClient = {
 	methods:{
 		// external
 		deepIsEqual,
+		dialogDeleteAsk,
 		getUnixNowDate,
 		
 		// actions
@@ -302,20 +323,6 @@ let MyAdminOauthClient = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
 			ws.send('oauthClient','del',this.id,true).then(
 				this.reloadAndClose,
@@ -324,24 +331,16 @@ let MyAdminOauthClient = {
 		},
 		set() {
 			if(!this.canSave) return;
+
+			if(this.inputs.claimAdmin      === '') this.inputs.claimAdmin      = null;
+			if(this.inputs.claimAdminValue === '') this.inputs.claimAdminValue = null;
+			if(this.inputs.claimRoles      === '') this.inputs.claimRoles      = null;
+			if(this.inputs.claimUsername   === '') this.inputs.claimUsername   = null;
+			if(this.inputs.providerUrl     === '') this.inputs.providerUrl     = null;
+			if(this.inputs.redirectUrl     === '') this.inputs.redirectUrl     = null;
+			if(this.inputs.tokenUrl        === '') this.inputs.tokenUrl        = null;
 			
-			ws.send('oauthClient','set',{
-				id:this.id,
-				name:this.inputs.name,
-				flow:this.inputs.flow,
-				clientId:this.inputs.clientId,
-				clientSecret:this.inputs.clientSecret,
-				dateExpiry:this.inputs.dateExpiry,
-				scopes:this.inputs.scopes,
-				loginMetaMap:this.inputs.loginMetaMap,
-				loginRolesAssign:this.inputs.loginRolesAssign,
-				loginTemplateId:this.inputs.loginTemplateId,
-				claimRoles:   this.inputs.claimRoles    !== '' ? this.inputs.claimRoles    : null,
-				claimUsername:this.inputs.claimUsername !== '' ? this.inputs.claimUsername : null,
-				providerUrl:  this.inputs.providerUrl   !== '' ? this.inputs.providerUrl   : null,
-				redirectUrl:  this.inputs.redirectUrl   !== '' ? this.inputs.redirectUrl   : null,
-				tokenUrl:     this.inputs.tokenUrl      !== '' ? this.inputs.tokenUrl      : null
-			},true).then(
+			ws.send('oauthClient','set',this.inputs,true).then(
 				this.reloadAndClose,
 				this.$root.genericError
 			);

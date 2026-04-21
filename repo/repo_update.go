@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"r3/config"
+	"r3/cache"
+	"r3/cluster"
 	"r3/db"
 	"r3/tools"
 	"r3/types"
@@ -14,8 +15,39 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// update internal module repository from external repository API
-func Update() error {
+// update repositories in individual transactions
+func RefreshAll() error {
+	var run = func(r types.Repo) error {
+		ctx, ctxCanc := context.WithTimeout(context.Background(), db.CtxDefTimeoutSysTask)
+		defer ctxCanc()
+
+		tx, err := db.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		if err := refresh_tx(ctx, tx, r); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+
+	anyActiveRepo := false
+	for _, r := range cache.GetRepos() {
+		if !r.Active {
+			continue
+		}
+		if err := run(r); err != nil {
+			return err
+		}
+		anyActiveRepo = true
+	}
+
+	if !anyActiveRepo {
+		return nil
+	}
+
 	ctx, ctxCanc := context.WithTimeout(context.Background(), db.CtxDefTimeoutSysTask)
 	defer ctxCanc()
 
@@ -25,40 +57,66 @@ func Update() error {
 	}
 	defer tx.Rollback(ctx)
 
-	if err := Update_tx(ctx, tx); err != nil {
+	if err := cluster.ReposChanged(ctx, tx, true); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
-func Update_tx(ctx context.Context, tx pgx.Tx) error {
-	baseUrl := config.GetString("repoUrl")
-	repoModuleMap := make(map[uuid.UUID]types.RepoModule)
 
-	// get authentication token
-	token, err := getToken(baseUrl)
+// update repositories within one transaction
+func RefreshAll_tx(ctx context.Context, tx pgx.Tx) error {
+	anyActiveRepo := false
+	for _, r := range cache.GetRepos() {
+		if !r.Active {
+			continue
+		}
+		if err := refresh_tx(ctx, tx, r); err != nil {
+			return err
+		}
+		anyActiveRepo = true
+	}
+	if !anyActiveRepo {
+		return nil
+	}
+	return cluster.ReposChanged(ctx, tx, true)
+}
+
+// update internal module repository from external repository API
+func refresh_tx(ctx context.Context, tx pgx.Tx, r types.Repo) error {
+
+	token, err := httpGetAuthToken(r.Url, r.FetchUserName, r.FetchUserPass, r.SkipVerify)
 	if err != nil {
 		return err
 	}
+	repoModuleMap := make(map[uuid.UUID]types.RepoModule)
 
 	// get modules, their latest releases and translated module meta data
-	if err := getModules(token, baseUrl, repoModuleMap); err != nil {
+	if err := getModules(token, r.Url, r.SkipVerify, repoModuleMap); err != nil {
 		return fmt.Errorf("failed to get modules, %w", err)
 	}
-	if err := getModuleMetas(token, baseUrl, repoModuleMap); err != nil {
+	if err := getModuleMetas(token, r.Url, r.SkipVerify, repoModuleMap); err != nil {
 		return fmt.Errorf("failed to get meta info for modules, %w", err)
 	}
 
 	// apply changes to local module store
-	if err := removeModules_tx(ctx, tx, repoModuleMap); err != nil {
+	if err := removeModules_tx(ctx, tx, r.Id, repoModuleMap); err != nil {
 		return fmt.Errorf("failed to remove modules, %w", err)
 	}
-	if err := addModules_tx(ctx, tx, repoModuleMap); err != nil {
+	if err := addModules_tx(ctx, tx, r.Id, repoModuleMap); err != nil {
 		return fmt.Errorf("failed to add modules, %w", err)
 	}
-	return config.SetUint64_tx(ctx, tx, "repoChecked", uint64(tools.GetTimeUnix()))
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE instance.repo
+		SET date_checked = $1
+		WHERE id = $2
+	`, tools.GetTimeUnix(), r.Id); err != nil {
+		return err
+	}
+	return nil
 }
 
-func addModules_tx(ctx context.Context, tx pgx.Tx, repoModuleMap map[uuid.UUID]types.RepoModule) error {
+func addModules_tx(ctx context.Context, tx pgx.Tx, repoId uuid.UUID, repoModuleMap map[uuid.UUID]types.RepoModule) error {
 
 	for _, sm := range repoModuleMap {
 
@@ -69,21 +127,21 @@ func addModules_tx(ctx context.Context, tx pgx.Tx, repoModuleMap map[uuid.UUID]t
 				SELECT module_id_wofk
 				FROM instance.repo_module
 				WHERE module_id_wofk = $1
+				AND   repo_id        = $2
 			)
-		`, sm.ModuleId).Scan(&exists); err != nil {
+		`, sm.ModuleId, repoId).Scan(&exists); err != nil {
 			return err
 		}
 
 		if !exists {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO instance.repo_module (
-					module_id_wofk, name, change_log, author, in_store,
+					repo_id, module_id_wofk, name, change_log, author, in_store,
 					release_build, release_build_app, release_date, file
 				)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-			`, sm.ModuleId, sm.Name, sm.ChangeLog, sm.Author, sm.InStore,
-				sm.ReleaseBuild, sm.ReleaseBuildApp, sm.ReleaseDate,
-				sm.FileId); err != nil {
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			`, repoId, sm.ModuleId, sm.Name, sm.ChangeLog, sm.Author, sm.InStore,
+				sm.ReleaseBuild, sm.ReleaseBuildApp, sm.ReleaseDate, sm.FileId); err != nil {
 
 				return err
 			}
@@ -94,9 +152,8 @@ func addModules_tx(ctx context.Context, tx pgx.Tx, repoModuleMap map[uuid.UUID]t
 					UPDATE instance.repo_module
 					SET name = $1, change_log = $2, author = $3, in_store = $4
 					WHERE module_id_wofk = $5
-				`, sm.Name, sm.ChangeLog, sm.Author, sm.InStore,
-					sm.ModuleId); err != nil {
-
+					AND   repo_id        = $6
+				`, sm.Name, sm.ChangeLog, sm.Author, sm.InStore, sm.ModuleId, repoId); err != nil {
 					return err
 				}
 			} else {
@@ -106,64 +163,69 @@ func addModules_tx(ctx context.Context, tx pgx.Tx, repoModuleMap map[uuid.UUID]t
 						release_build = $5, release_build_app = $6,
 						release_date = $7, file = $8
 					WHERE module_id_wofk = $9
-				`, sm.Name, sm.ChangeLog, sm.Author, sm.InStore,
-					sm.ReleaseBuild, sm.ReleaseBuildApp, sm.ReleaseDate,
-					sm.FileId, sm.ModuleId); err != nil {
+					AND   repo_id        = $10
+
+				`, sm.Name, sm.ChangeLog, sm.Author, sm.InStore, sm.ReleaseBuild, sm.ReleaseBuildApp,
+					sm.ReleaseDate, sm.FileId, sm.ModuleId, repoId); err != nil {
 
 					return err
 				}
 			}
 		}
 
-		// add translated module meta
-		if _, err := tx.Exec(ctx, `
-			DELETE FROM instance.repo_module_meta
-			WHERE module_id_wofk = $1
-		`, sm.ModuleId); err != nil {
-			return err
-		}
-
+		// translated module meta
+		languageCodes := make([]string, 0)
 		for languageCode, meta := range sm.LanguageCodeMeta {
-
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO instance.repo_module_meta (
-					module_id_wofk, language_code, title,
-					description, support_page
-				)
-				VALUES ($1,$2,$3,$4,$5)
-			`, sm.ModuleId, languageCode, meta.Title, meta.Description,
-				meta.SupportPage); err != nil {
-
+					repo_id, module_id_wofk, language_code, title, description, support_page)
+				VALUES ($1,$2,$3,$4,$5,$6)
+				ON CONFLICT (repo_id, module_id_wofk, language_code)
+				DO UPDATE SET
+					title = $4, description = $5, support_page = $6
+			`, repoId, sm.ModuleId, languageCode, meta.Title, meta.Description, meta.SupportPage); err != nil {
 				return err
 			}
+			languageCodes = append(languageCodes, languageCode)
+		}
+
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM instance.repo_module_meta
+			WHERE module_id_wofk =  $1
+			AND   repo_id        =  $2
+			AND   language_code  <> ALL($3)
+		`, sm.ModuleId, repoId, languageCodes); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func removeModules_tx(ctx context.Context, tx pgx.Tx, repoModuleMap map[uuid.UUID]types.RepoModule) error {
+func removeModules_tx(ctx context.Context, tx pgx.Tx, repoId uuid.UUID, repoModuleMap map[uuid.UUID]types.RepoModule) error {
 
-	moduleIds := make([]uuid.UUID, 0)
-	for id, _ := range repoModuleMap {
-		moduleIds = append(moduleIds, id)
+	moduleIdsKeep := make([]uuid.UUID, 0)
+	for id := range repoModuleMap {
+		moduleIdsKeep = append(moduleIdsKeep, id)
 	}
 
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM instance.repo_module
 		WHERE module_id_wofk <> ALL($1)
-	`, moduleIds); err != nil {
+		AND   repo_id        =  $2
+	`, moduleIdsKeep, repoId); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM instance.repo_module_meta
 		WHERE module_id_wofk <> ALL($1)
-	`, moduleIds); err != nil {
+		AND   repo_id        =  $2
+	`, moduleIdsKeep, repoId); err != nil {
 		return err
 	}
 	return nil
 }
 
-func getModules(token string, baseUrl string, repoModuleMap map[uuid.UUID]types.RepoModule) error {
+func getModules(token string, baseUrl string, skipVerify bool, repoModuleMap map[uuid.UUID]types.RepoModule) error {
 
 	type moduleResponse struct {
 		Module struct {
@@ -190,15 +252,13 @@ func getModules(token string, baseUrl string, repoModuleMap map[uuid.UUID]types.
 		url := fmt.Sprintf("%s/api/lsw_repo/module/v1?limit=%d&offset=%d", baseUrl, limit, offset)
 
 		var res []moduleResponse
-		if err := httpCallGet(token, url, "", &res); err != nil {
+		if err := httpCallGet(token, url, skipVerify, "", &res); err != nil {
 			return err
 		}
 
 		for _, mod := range res {
-
 			if len(mod.Release.File) != 1 {
-				return fmt.Errorf("module release does not have exactly 1 file, file count: %d",
-					len(mod.Release.File))
+				return fmt.Errorf("module release does not have exactly 1 file, file count: %d", len(mod.Release.File))
 			}
 
 			repoModuleMap[mod.Module.Uuid] = types.RepoModule{
@@ -224,7 +284,7 @@ func getModules(token string, baseUrl string, repoModuleMap map[uuid.UUID]types.
 	return nil
 }
 
-func getModuleMetas(token string, baseUrl string, repoModuleMap map[uuid.UUID]types.RepoModule) error {
+func getModuleMetas(token string, baseUrl string, skipVerify bool, repoModuleMap map[uuid.UUID]types.RepoModule) error {
 
 	type moduleMetaResponse struct {
 		Meta struct {
@@ -247,7 +307,7 @@ func getModuleMetas(token string, baseUrl string, repoModuleMap map[uuid.UUID]ty
 		url := fmt.Sprintf("%s/api/lsw_repo/module_meta/v1?limit=%d&offset=%d", baseUrl, limit, offset)
 
 		var res []moduleMetaResponse
-		if err := httpCallGet(token, url, "", &res); err != nil {
+		if err := httpCallGet(token, url, skipVerify, "", &res); err != nil {
 			return err
 		}
 

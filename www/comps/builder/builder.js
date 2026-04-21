@@ -1,15 +1,14 @@
-import MyBuilderDocs             from './builderDocs.js';
+import MyBuilderHelp             from './builderHelp.js';
 import MyBuilderNew              from './builderNew.js';
 import {getJsFunctionsProcessed} from '../shared/builder.js';
 import srcBase64Icon             from '../shared/image.js';
 import {getCaptionForLang}       from '../shared/language.js';
 import {MyModuleSelect}          from '../input.js';
-export {MyBuilder as default};
 
-let MyBuilder = {
+export default {
 	name:'my-builder',
 	components:{
-		MyBuilderDocs,
+		MyBuilderHelp,
 		MyBuilderNew,
 		MyModuleSelect
 	},
@@ -17,25 +16,21 @@ let MyBuilder = {
 		<div class="navigation" v-if="module" :class="{ isDark:colorMenu.isDark() }" :style="bgStyle">
 			<div class="navigation-header">
 				<div class="row gap centered">
-					<img class="icon"
-						:src="srcBase64Icon(module.iconId,'images/module.png')"
-					/>
+					<img class="icon" :src="srcBase64Icon(module.iconId,'images/module.png')" />
 					<span>{{ getCaptionForLang('moduleTitle',builderLanguage,module.id,module.captions,module.name) }}</span>
 				</div>
 				<my-button image="question.png"
-					@trigger="showDocs = !showDocs"
+					@trigger="showHelp = !showHelp"
 					:captionTitle="capGen.help"
 				/>
 			</div>
 			
 			<!-- module navigation -->
 			<div class="moduleSelect default-inputs transparent">
-				<my-module-select
-					v-model="moduleIdInput"
-				/>
+				<my-module-select v-model="moduleIdInput" />
 				<my-button image="upward.png"
-					@trigger="moduleIdInput = ''"
-					:active="moduleIdInput !== ''"
+					@trigger="moduleIdInput = null"
+					:active="moduleIdInput !== null"
 					:captionTitle="capApp.backHint"
 				/>
 			</div>
@@ -71,125 +66,100 @@ let MyBuilder = {
 			<!-- module component navigation -->
 			<div class="navigation-two-columns" v-if="module">
 				<div class="navigation-column">
-					<router-link class="entry clickable"
-						:to="'/builder/start/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/start/'+module.id">
 						<img src="images/flag.png" />
 						<span>{{ capApp.navigationStart }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/module/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/module/'+module.id">
 						<img src="images/module.png" />
 						<span>{{ capGen.module }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/relations/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/relations/'+module.id">
 						<img src="images/database.png" />
 						<span>{{ capGen.relations }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/forms/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/forms/'+module.id">
 						<img src="images/fileText.png" />
 						<span>{{ capGen.forms }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/menu/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/menu/'+module.id">
 						<img src="images/menu.png" />
 						<span>{{ capGen.menus }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/roles/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/roles/'+module.id">
 						<img src="images/personMultiple.png" />
 						<span>{{ capGen.roles }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/icons/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/docs/'+module.id">
+						<img src="images/document.png" />
+						<span>{{ capGen.pdfs }}</span>
+					</router-link>
+					
+					<router-link class="entry clickable" :to="'/builder/icons/'+module.id">
 						<img src="images/fileImage.png" />
 						<span>{{ capGen.icons }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/caption-map/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/caption-map/'+module.id">
 						<img src="images/languages.png" />
 						<span>{{ capApp.navigationCaptionMap }}</span>
 					</router-link>
 				</div>
 				<div class="navigation-column">
-					<router-link class="entry clickable"
-						:to="'/builder/pg-functions/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/pg-functions/'+module.id">
 						<img src="images/codeDatabase.png" />
 						<span>{{ capGen.pgFunctions }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/js-functions/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/js-functions/'+module.id">
 						<img src="images/codeScreen.png" />
 						<span>{{ capGen.jsFunctions }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/collections/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/collections/'+module.id">
 						<img src="images/tray.png" />
 						<span>{{ capGen.collections }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/search-bars/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/search-bars/'+module.id">
 						<img src="images/search.png" />
 						<span>{{ capGen.searchBars }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						v-if="hasLoginForms"
-						:to="'/builder/login-forms/'+module.id"
-					>
+					<router-link class="entry clickable" v-if="hasLoginForms" :to="'/builder/login-forms/'+module.id">
 						<img src="images/personCog.png" />
 						<span>{{ capGen.loginForms }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/articles/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/articles/'+module.id">
 						<img src="images/question.png" />
 						<span>{{ capGen.articles }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/apis/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/apis/'+module.id">
 						<img src="images/api.png" />
 						<span>{{ capGen.apis }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/variables/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/variables/'+module.id">
 						<img src="images/variable.png" />
 						<span>{{ capGen.variables }}</span>
 					</router-link>
 					
-					<router-link class="entry clickable"
-						:to="'/builder/widgets/'+module.id"
-					>
+					<router-link class="entry clickable" :to="'/builder/widgets/'+module.id">
 						<img src="images/tiles.png" />
 						<span>{{ capGen.widgets }}</span>
+					</router-link>
+					
+					<router-link class="entry clickable" :to="'/builder/releases/'+module.id">
+						<img src="images/versionHistory.png" />
+						<span>{{ capGen.versionHistory }}</span>
 					</router-link>
 					
 					<!-- so router link is not last child (CSS) -->
@@ -235,6 +205,13 @@ let MyBuilder = {
 					<span>{{ capGen.searchBars }}</span>
 				</router-link>
 				<router-link class="entry isTitle grow clickable"
+					v-if="navigation === 'docs'"
+					:to="'/builder/docs/'+module.id"
+				>
+					<img src="images/document.png" />
+					<span>{{ capGen.pdfs }}</span>
+				</router-link>
+				<router-link class="entry isTitle grow clickable"
 					v-if="navigation === 'apis'"
 					:to="'/builder/apis/'+module.id"
 				>
@@ -262,7 +239,7 @@ let MyBuilder = {
 						:title="capApp.navigationFilterHint"
 					/>
 					<my-button image="add.png"
-						v-if="['apis','collections','forms','js-functions','pg-functions','relations','roles','search-bars'].includes(navigation)"
+						v-if="['apis','collections','docs','forms','js-functions','pg-functions','relations','roles','search-bars'].includes(navigation)"
 						@trigger="add"
 						:active="moduleOwner"
 						:captionTitle="capGen.button.add"
@@ -327,6 +304,15 @@ let MyBuilder = {
 					>{{ a.name + ' (v' + a.version + ')' }}</router-link>
 				</template>
 				
+				<!-- documents -->
+				<template v-if="navigation === 'docs'">
+					<router-link class="entry clickable"
+						v-for="a in module.docs.filter(v => v.name.toLowerCase().includes(filter.toLowerCase()))"
+						:key="a.id"
+						:to="'/builder/doc/'+a.id" 
+					>{{ a.name }}</router-link>
+				</template>
+				
 				<!-- variables -->
 				<template v-if="navigation === 'variables'">
 					<router-link class="entry clickable"
@@ -369,34 +355,29 @@ let MyBuilder = {
 		
 		<router-view
 			v-if="isReady"
-			v-show="!showDocs"
+			v-show="!showHelp"
 			@createNew="createNew"
 			@nextLanguage="nextLanguage"
-			@toggleDocs="showDocs = !showDocs"
-			:builderLanguage="builderLanguage"
+			@toggleHelp="showHelp = !showHelp"
+			:builderLanguage
 			:readonly="!moduleOwner"
 		/>
 		
-		<my-builder-docs
-			v-if="showDocs"
-			@close="showDocs = false"
+		<my-builder-help
+			v-if="showHelp"
+			@close="showHelp = false"
 		/>
 		
 		<!-- new entity dialog -->
 		<my-builder-new
 			v-if="createNewOpen"
 			@close="createNewEntity = null"
+			:builderLanguage
 			:entity="createNewEntity"
 			:moduleId="moduleId"
 			:presets="createNewPresets"
 		/>
 	</div>`,
-	created() {
-		this.$store.commit('keyDownHandlerAdd',{fnc:this.nextLanguage,key:'q',keyCtrl:true});
-	},
-	unmounted() {
-		this.$store.commit('keyDownHandlerDel',this.nextLanguage);
-	},
 	data() {
 		return {
 			builderLanguage:'',   // selected language for translations
@@ -406,22 +387,26 @@ let MyBuilder = {
 			isReady:false,        // ready to show content
 			moduleId:'',          // selected module ID
 			navigation:'module',
-			showDocs:false
+			showHelp:false
 		};
-	},
-	mounted() {
-		this.$store.commit('pageTitle',this.capApp.pageTitle);
-		
-		if(!this.builderEnabled)
-			return this.$router.push('/');
-		
-		this.isReady = true;
 	},
 	watch:{
 		$route:{
 			handler(val) {
 				if(val.hash === '')
-					this.showDocs = false;
+					this.showHelp = false;
+
+				if(!this.isSecureContext) {
+					this.$store.commit('dialog',{
+						captionBody:this.capGen.error.noSecureContext,
+						captionTop:this.capGen.errorTitle,
+						image:'lockOpen.png'
+					});
+					return this.$router.push('/');
+				}
+				
+				if(!this.builderEnabled)
+					return this.$router.push('/');
 				
 				if(typeof val.meta.nav === 'undefined') {
 					this.moduleId = '';
@@ -433,26 +418,27 @@ let MyBuilder = {
 				this.navigation = val.meta.nav;
 				
 				// ascertain module ID to be loaded
-				let isModule    = ['docs','module','start'].includes(val.meta.target);
-				let targetIdMap = this.moduleIdMap;
+				const isModule    = ['module','start'].includes(val.meta.target);
+				let   targetIdMap = this.moduleIdMap;
 				
 				if(!isModule) {
 					switch(val.meta.target) {
 						case 'api':         targetIdMap = this.apiIdMap;        break;
 						case 'collection':  targetIdMap = this.collectionIdMap; break;
+						case 'doc':         targetIdMap = this.docIdMap;        break;
 						case 'form':        targetIdMap = this.formIdMap;       break;
 						case 'js-function': targetIdMap = this.jsFunctionIdMap; break;
 						case 'relation':    targetIdMap = this.relationIdMap;   break;
 						case 'role':        targetIdMap = this.roleIdMap;       break;
 						case 'pg-function': targetIdMap = this.pgFunctionIdMap; break;
-						case 'search-bar':  targetIdMap = this.searchBarIdMap; break;
+						case 'search-bar':  targetIdMap = this.searchBarIdMap;  break;
 						case 'variable':    targetIdMap = this.variableIdMap;   break;
 						case 'widget':      targetIdMap = this.widgetIdMap;     break;
 					}
 				}
 				
 				// reroute if invalid target (usually navigating back to deleted entity)
-				if(typeof targetIdMap[val.params.id] === 'undefined') {
+				if(targetIdMap[val.params.id] === undefined) {
 					this.$router.replace('/builder/modules');
 					this.isReady = false;
 					return;
@@ -479,17 +465,20 @@ let MyBuilder = {
 		}
 	},
 	computed:{
-		subMenu:(s) =>
+		subMenu:s =>
 			s.navigation === 'relations'    && s.module.relations.length   !== 0 ||
 			s.navigation === 'forms'        && s.module.forms.length       !== 0 ||
 			s.navigation === 'roles'        && s.module.roles.length       !== 0 ||
 			s.navigation === 'collections'  && s.module.collections.length !== 0 ||
 			s.navigation === 'search-bars'  && s.module.searchBars.length  !== 0 ||
 			s.navigation === 'apis'         && s.module.apis.length        !== 0 ||
+			s.navigation === 'docs'         && s.module.docs.length        !== 0 ||
 			s.navigation === 'js-functions' && s.module.jsFunctions.length !== 0 ||
 			s.navigation === 'pg-functions' && s.module.pgFunctions.length !== 0,
+		
+		// inputs
 		moduleIdInput:{
-			get()  { return !this.module ? '' : this.module.id; },
+			get()  { return !this.module ? null : this.module.id; },
 			set(v) {
 				if(v === '') this.$router.push(`/builder/modules`);
 				else         this.$router.push(`/builder/${this.navigation}/${v}`);
@@ -497,35 +486,46 @@ let MyBuilder = {
 		},
 		
 		// simple
-		createNewOpen:(s) => s.createNewEntity !== null,
-		hasLoginForms:(s) => !s.isNew && s.module.loginForms.length !== 0,
-		isNew:        (s) => s.moduleId === '',
-		jsFunctions:  (s) => s.getJsFunctionsProcessed(s.module.jsFunctions,s.filter),
-		module:       (s) => s.isNew ? false : s.moduleIdMap[s.moduleId],
-		moduleOwner:  (s) => s.isNew ? true  : s.moduleIdMapMeta[s.moduleId].owner,
+		createNewOpen:s => s.createNewEntity !== null,
+		hasLoginForms:s => !s.isNew && s.module.loginForms.length !== 0,
+		isNew:        s => s.moduleId === '',
+		jsFunctions:  s => s.getJsFunctionsProcessed(s.module.jsFunctions,s.filter),
+		module:       s => s.isNew ? false : s.moduleIdMap[s.moduleId],
+		moduleOwner:  s => s.isNew ? true  : s.moduleIdMapMeta[s.moduleId].owner,
 		
 		// stores
-		apiIdMap:         (s) => s.$store.getters['schema/apiIdMap'],
-		attributeIdMap:   (s) => s.$store.getters['schema/attributeIdMap'],
-		collectionIdMap:  (s) => s.$store.getters['schema/collectionIdMap'],
-		formIdMap:        (s) => s.$store.getters['schema/formIdMap'],
-		iconIdMap:        (s) => s.$store.getters['schema/iconIdMap'],
-		jsFunctionIdMap:  (s) => s.$store.getters['schema/jsFunctionIdMap'],
-		moduleIdMap:      (s) => s.$store.getters['schema/moduleIdMap'],
-		pgFunctionIdMap:  (s) => s.$store.getters['schema/pgFunctionIdMap'],
-		relationIdMap:    (s) => s.$store.getters['schema/relationIdMap'],
-		roleIdMap:        (s) => s.$store.getters['schema/roleIdMap'],
-		searchBarIdMap:   (s) => s.$store.getters['schema/searchBarIdMap'],
-		variableIdMap:    (s) => s.$store.getters['schema/variableIdMap'],
-		widgetIdMap:      (s) => s.$store.getters['schema/widgetIdMap'],
-		bgStyle:          (s) => s.$store.getters.colorMenuStyle,
-		builderEnabled:   (s) => s.$store.getters.builderEnabled,
-		capApp:           (s) => s.$store.getters.captions.builder,
-		capGen:           (s) => s.$store.getters.captions.generic,
-		colorMenu:        (s) => s.$store.getters.colorMenu,
-		globalSearchInput:(s) => s.$store.getters.globalSearchInput,
-		moduleIdMapMeta:  (s) => s.$store.getters.moduleIdMapMeta,
-		settings:         (s) => s.$store.getters.settings
+		apiIdMap:         s => s.$store.getters['schema/apiIdMap'],
+		attributeIdMap:   s => s.$store.getters['schema/attributeIdMap'],
+		collectionIdMap:  s => s.$store.getters['schema/collectionIdMap'],
+		docIdMap:         s => s.$store.getters['schema/docIdMap'],
+		formIdMap:        s => s.$store.getters['schema/formIdMap'],
+		iconIdMap:        s => s.$store.getters['schema/iconIdMap'],
+		jsFunctionIdMap:  s => s.$store.getters['schema/jsFunctionIdMap'],
+		moduleIdMap:      s => s.$store.getters['schema/moduleIdMap'],
+		pgFunctionIdMap:  s => s.$store.getters['schema/pgFunctionIdMap'],
+		relationIdMap:    s => s.$store.getters['schema/relationIdMap'],
+		roleIdMap:        s => s.$store.getters['schema/roleIdMap'],
+		searchBarIdMap:   s => s.$store.getters['schema/searchBarIdMap'],
+		variableIdMap:    s => s.$store.getters['schema/variableIdMap'],
+		widgetIdMap:      s => s.$store.getters['schema/widgetIdMap'],
+		bgStyle:          s => s.$store.getters.colorMenuStyle,
+		builderEnabled:   s => s.$store.getters.builderEnabled,
+		capApp:           s => s.$store.getters.captions.builder,
+		capGen:           s => s.$store.getters.captions.generic,
+		colorMenu:        s => s.$store.getters.colorMenu,
+		globalSearchInput:s => s.$store.getters.globalSearchInput,
+		isSecureContext:  s => s.$store.getters.isSecureContext,
+		moduleIdMapMeta:  s => s.$store.getters.moduleIdMapMeta,
+		settings:         s => s.$store.getters.settings
+	},
+	created() {
+		this.$store.commit('keyDownHandlerAdd',{fnc:this.nextLanguage,key:'q',keyCtrl:true});
+	},
+	unmounted() {
+		this.$store.commit('keyDownHandlerDel',this.nextLanguage);
+	},
+	mounted() {
+		this.$store.commit('pageTitle',this.capApp.pageTitle);
 	},
 	methods:{
 		// externals
@@ -539,6 +539,7 @@ let MyBuilder = {
 			switch(this.navigation) {
 				case 'apis':         entity = 'api';        break;
 				case 'collections':  entity = 'collection'; break;
+				case 'docs':         entity = 'doc';        break;
 				case 'forms':        entity = 'form';       break;
 				case 'js-functions': entity = 'jsFunction'; break;
 				case 'pg-functions': entity = 'pgFunction'; break;

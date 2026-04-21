@@ -3,16 +3,44 @@ package request
 import (
 	"context"
 	"encoding/json"
-	"r3/db"
 	"r3/repo"
-	"r3/transfer"
 	"r3/types"
 
 	"github.com/gofrs/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
-func RepoModuleGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (interface{}, error) {
+func RepoCommit(ctx context.Context, reqJson json.RawMessage, loginId int64) (any, error) {
+	var req struct {
+		CredPass string    `json:"credPass"`
+		CredUser string    `json:"credUser"`
+		FileName string    `json:"fileName"`
+		ModuleId uuid.UUID `json:"moduleId"`
+		RepoId   uuid.UUID `json:"repoId"`
+	}
+	if err := json.Unmarshal(reqJson, &req); err != nil {
+		return nil, err
+	}
+	return nil, repo.RepoCommit(ctx, loginId, req.RepoId, req.CredUser, req.CredPass, req.ModuleId, req.FileName)
+}
+
+func RepoDel_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
+	var id uuid.UUID
+	if err := json.Unmarshal(reqJson, &id); err != nil {
+		return nil, err
+	}
+	return nil, repo.Del_Tx(ctx, tx, id)
+}
+
+func RepoSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
+	var req types.Repo
+	if err := json.Unmarshal(reqJson, &req); err != nil {
+		return nil, err
+	}
+	return nil, repo.Set_tx(ctx, tx, req)
+}
+
+func RepoModuleGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
 
 	var (
 		err error
@@ -44,47 +72,10 @@ func RepoModuleGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (
 	return res, nil
 }
 
-func RepoModuleInstall(ctx context.Context, reqJson json.RawMessage) (interface{}, error) {
-	var req struct {
-		FileId uuid.UUID `json:"fileId"`
-	}
-
-	if err := json.Unmarshal(reqJson, &req); err != nil {
+func RepoModuleInstall(ctx context.Context, reqJson json.RawMessage) (any, error) {
+	var moduleId uuid.UUID
+	if err := json.Unmarshal(reqJson, &moduleId); err != nil {
 		return nil, err
 	}
-
-	filePath, err := repo.Download(req.FileId)
-	if err != nil {
-		return nil, err
-	}
-	return nil, transfer.ImportFromFiles(ctx, []string{filePath})
-}
-
-func RepoModuleInstallAll(ctx context.Context) (interface{}, error) {
-
-	// get all files to be updated from repository
-	fileIds := make([]uuid.UUID, 0)
-	filePaths := make([]string, 0)
-
-	if err := db.Pool.QueryRow(ctx, `
-		SELECT ARRAY_AGG(rm.file)
-		FROM app.module AS m
-		INNER JOIN instance.repo_module AS rm ON rm.module_id_wofk = m.id
-		WHERE rm.release_build > m.release_build
-	`).Scan(&fileIds); err != nil {
-		return nil, err
-	}
-
-	for _, fileId := range fileIds {
-		filePath, err := repo.Download(fileId)
-		if err != nil {
-			return nil, err
-		}
-		filePaths = append(filePaths, filePath)
-	}
-	return nil, transfer.ImportFromFiles(ctx, filePaths)
-}
-
-func RepoModuleUpdate_tx(ctx context.Context, tx pgx.Tx) (interface{}, error) {
-	return nil, repo.Update_tx(ctx, tx)
+	return nil, repo.InstallModules(ctx, []uuid.UUID{moduleId})
 }

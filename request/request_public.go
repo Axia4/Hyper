@@ -9,7 +9,7 @@ import (
 	"github.com/gofrs/uuid"
 )
 
-func PublicGet() (interface{}, error) {
+func PublicGet() (any, error) {
 
 	// random background from available list
 	var loginBackgrounds = config.GetUint64Slice("loginBackgrounds")
@@ -35,6 +35,7 @@ func PublicGet() (interface{}, error) {
 		CompanyName            string                            `json:"companyName"`
 		CompanyWelcome         string                            `json:"companyWelcome"`
 		Css                    string                            `json:"css"`
+		HotkeyModExcl          []string                          `json:"hotkeyModExcl"`
 		LanguageCodes          []string                          `json:"languageCodes"`
 		LoginBackground        uint64                            `json:"loginBackground"`
 		Mirror                 bool                              `json:"mirror"`
@@ -43,6 +44,7 @@ func PublicGet() (interface{}, error) {
 		PresetIdMapRecordId    map[uuid.UUID]int64               `json:"presetIdMapRecordId"`
 		ProductionMode         uint64                            `json:"productionMode"`
 		PwaDomainMap           map[string]uuid.UUID              `json:"pwaDomainMap"`
+		ReposFeedback          []types.RepoFeedback              `json:"reposFeedback"`
 		SearchDictionaries     []string                          `json:"searchDictionaries"`
 		SystemMsg              types.SystemMsg                   `json:"systemMsg"`
 		TokenKeepEnable        bool                              `json:"tokenKeepEnable"`
@@ -61,6 +63,7 @@ func PublicGet() (interface{}, error) {
 		CompanyName:            config.GetString("companyName"),
 		CompanyWelcome:         config.GetString("companyWelcome"),
 		Css:                    config.GetString("css"),
+		HotkeyModExcl:          config.GetStringSlice("hotkeyModExcl"),
 		LanguageCodes:          cache.GetCaptionLanguageCodes(),
 		LoginBackground:        loginBackground,
 		Mirror:                 config.File.Mirror,
@@ -69,6 +72,7 @@ func PublicGet() (interface{}, error) {
 		PresetIdMapRecordId:    cache.GetPresetRecordIds(),
 		ProductionMode:         config.GetUint64("productionMode"),
 		PwaDomainMap:           cache.GetPwaDomainMap(),
+		ReposFeedback:          cache.GetReposFeedback(),
 		SearchDictionaries:     cache.GetSearchDictionaries(),
 		SystemMsg: types.SystemMsg{
 			Date0:       config.GetUint64("systemMsgDate0"),

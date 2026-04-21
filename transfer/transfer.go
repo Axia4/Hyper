@@ -21,6 +21,7 @@ import (
 	"r3/cache"
 	"r3/config"
 	"r3/config/module_meta"
+	"r3/handler"
 	"r3/tools"
 	"r3/types"
 	"sync"
@@ -30,30 +31,43 @@ import (
 )
 
 var (
-	exportKey string       // in memory storage for export key
-	Import_mx sync.RWMutex // transfer import mutex
+	import_mx sync.RWMutex // transfer import mutex
 )
 
-func StoreExportKey(key string) {
-	exportKey = key
-}
-
 func AddVersion_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) error {
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
-
 	var exists bool
 	var file types.TransferFile
 
+	cache.Schema_mx.RLock()
 	file.Content.Module, exists = cache.ModuleIdMap[moduleId]
+	cache.Schema_mx.RUnlock()
+
 	if !exists {
-		return errors.New("module does not exist")
+		return handler.ErrSchemaUnknownModule(moduleId)
 	}
 
 	// update version info
 	file.Content.Module.ReleaseBuildApp = config.GetAppVersion().Build
 	file.Content.Module.ReleaseBuild = file.Content.Module.ReleaseBuild + 1
 	file.Content.Module.ReleaseDate = tools.GetTimeUnix()
+
+	// update release info - take uncommited logs (build 0) and create a new release for them
+	anyReleaseLogs := false
+	for i, r := range file.Content.Module.Releases {
+		if r.Build == 0 {
+			if len(r.Logs) != 0 {
+				file.Content.Module.Releases = append(file.Content.Module.Releases, types.Release{
+					Build:       int64(file.Content.Module.ReleaseBuild),
+					BuildApp:    int64(file.Content.Module.ReleaseBuildApp),
+					DateCreated: file.Content.Module.ReleaseDate,
+					Logs:        r.Logs,
+				})
+				file.Content.Module.Releases[i].Logs = make([]types.ReleaseLog, 0)
+				anyReleaseLogs = true
+			}
+			break
+		}
+	}
 
 	// recreate hash with updated module meta
 	hashedStr, err := getModuleHashFromFile(file)
@@ -65,14 +79,29 @@ func AddVersion_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) error {
 		return err
 	}
 
+	// update version info & release logs in DB
+	if anyReleaseLogs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO app.release (module_id, build, build_app, date_created)
+			VALUES ($1,$2,$3,$4)
+		`, moduleId, file.Content.Module.ReleaseBuild, file.Content.Module.ReleaseBuildApp, file.Content.Module.ReleaseDate); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE app.release_log
+			SET build = $1
+			WHERE module_id = $2
+			AND   build     = 0
+		`, file.Content.Module.ReleaseBuild, moduleId); err != nil {
+			return err
+		}
+	}
+
 	_, err = tx.Exec(ctx, `
 		UPDATE app.module
-		SET release_build_app = $1, release_build = $2,
-			release_date = $3
+		SET release_build_app = $1, release_build = $2,	release_date = $3
 		WHERE id = $4
-	`, file.Content.Module.ReleaseBuildApp,
-		file.Content.Module.ReleaseBuild,
-		file.Content.Module.ReleaseDate, moduleId)
+	`, file.Content.Module.ReleaseBuildApp, file.Content.Module.ReleaseBuild, file.Content.Module.ReleaseDate, moduleId)
 
 	return err
 }
@@ -95,7 +124,7 @@ func GetModuleChangedWithDependencies_tx(ctx context.Context, tx pgx.Tx, moduleI
 
 		module, exists := cache.ModuleIdMap[id]
 		if !exists {
-			return errors.New("unknown module")
+			return handler.ErrSchemaUnknownModule(id)
 		}
 
 		var err error

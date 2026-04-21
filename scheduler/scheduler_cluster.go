@@ -41,9 +41,7 @@ func clusterProcessEvents() error {
 	events := make([]types.ClusterEvent, 0)
 	for rows.Next() {
 		var e types.ClusterEvent
-		if err := rows.Scan(&e.Content, &e.Payload, &e.Target.Address,
-			&e.Target.Device, &e.Target.LoginId); err != nil {
-
+		if err := rows.Scan(&e.Content, &e.Payload, &e.Target.Address, &e.Target.Device, &e.Target.LoginId); err != nil {
 			return err
 		}
 		events = append(events, e)
@@ -144,6 +142,8 @@ func clusterProcessEvent(ctx context.Context, tx pgx.Tx, e types.ClusterEvent, c
 			return err
 		}
 		err = cluster.MasterAssigned(p.State)
+	case "reposChanged":
+		err = cluster.ReposChanged(ctx, tx, false)
 	case "schemaChanged":
 		var moduleIds []uuid.UUID
 		if err := json.Unmarshal(jsonPayload, &moduleIds); err != nil {

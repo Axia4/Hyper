@@ -9,11 +9,11 @@ export default {
 		@dropdown-show="$emit('dropdown-show',$event)"
 		@request-data="get"
 		@updated-text-input="inputText = $event"
-		:dropdownShow="dropdownShow"
-		:inputTextSet="inputTextSet"
+		:dropdownShow
+		:inputTextSet
 		:options="logins"
-		:placeholder="placeholder"
-		:readonly="readonly"
+		:placeholder
+		:readonly
 	/>`,
 	props:{
 		clearInput:  { type:Boolean, required:false, default:false }, // keep text input clear

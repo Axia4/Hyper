@@ -41,11 +41,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
 		return
 	}
-	commaChar, err := handler.ReadGetterFromUrl(r, "comma_char")
-	if err != nil {
-		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
-		return
-	}
 	dateFormat, err := handler.ReadGetterFromUrl(r, "date_format")
 	if err != nil {
 		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
@@ -106,7 +101,22 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
 		return
 	}
-	var columns []types.Column
+	charComma, err := handler.ReadGetterFromUrl(r, "char_comma")
+	if err != nil {
+		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
+		return
+	}
+	charDec, err := handler.ReadGetterFromUrlOptional(r, "char_dec")
+	if err != nil {
+		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
+		return
+	}
+	charThou, err := handler.ReadGetterFromUrlOptional(r, "char_thou")
+	if err != nil {
+		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
+		return
+	}
+	var columns []types.CsvExportColumn
 	if err := json.Unmarshal([]byte(columnsString), &columns); err != nil {
 		handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
 		return
@@ -165,10 +175,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// start work
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
-
 	// prepare CSV file
 	filePath, err := tools.GetUniqueFilePath(config.File.Paths.Temp, 8999999, 9999999)
 	if err != nil {
@@ -186,7 +192,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	writer.Comma, _ = utf8.DecodeRuneInString(commaChar)
+	writer.Comma, _ = utf8.DecodeRuneInString(charComma)
 
 	// place header line
 	if !ignoreHeader {
@@ -206,7 +212,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// fallback to attribute title
+			cache.Schema_mx.RLock()
 			atr, exists := cache.AttributeIdMap[expr.AttributeId.Bytes]
+			cache.Schema_mx.RUnlock()
+
 			if !exists {
 				handler.AbortRequest(w, handler.ContextCsvDownload, handler.ErrSchemaUnknownAttribute(expr.AttributeId.Bytes), handler.ErrGeneral)
 				return
@@ -218,7 +227,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// fallback to attribute + relation name
+			cache.Schema_mx.RLock()
 			rel, exists := cache.RelationIdMap[atr.RelationId]
+			cache.Schema_mx.RUnlock()
+
 			if !exists {
 				handler.AbortRequest(w, handler.ContextCsvDownload, handler.ErrSchemaUnknownRelation(atr.RelationId), handler.ErrGeneral)
 				return
@@ -248,7 +260,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// store attribute content use for each column
 	columnAttributeContentUse := make([]string, len(columns))
 	for i, column := range columns {
+		cache.Schema_mx.RLock()
 		atr, exists := cache.AttributeIdMap[column.AttributeId]
+		cache.Schema_mx.RUnlock()
+
 		if !exists {
 			handler.AbortRequest(w, handler.ContextCsvDownload, nil,
 				handler.ErrSchemaUnknownAttribute(column.AttributeId).Error())
@@ -260,7 +275,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		total, err := dataToCsv(ctx, writer, get, locUser, boolTrue, boolFalse,
-			dateFormat, columnAttributeContentUse, login.Id)
+			dateFormat, charDec, charThou, columnAttributeContentUse, login.Id)
 
 		if err != nil {
 			handler.AbortRequest(w, handler.ContextCsvDownload, err, handler.ErrGeneral)
@@ -290,7 +305,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func dataToCsv(ctx context.Context, writer *csv.Writer, get types.DataGet, locUser *time.Location, boolTrue string,
-	boolFalse string, dateFormat string, columnAttributeContentUse []string, loginId int64) (int64, error) {
+	boolFalse string, dateFormat string, charDec string, charThou string, columnAttributeContentUse []string, loginId int64) (int64, error) {
 
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -317,31 +332,17 @@ func dataToCsv(ctx context.Context, writer *csv.Writer, get types.DataGet, locUs
 		case "date", "datetime":
 			// date values are always stored as UTC at midnight
 			loc := time.UTC
-			format := "2006-01-02"
-
-			switch dateFormat {
-			case "Y-m-d":
-				format = "2006-01-02"
-			case "Y/m/d":
-				format = "2006/01/02"
-			case "d.m.Y":
-				format = "02.01.2006"
-			case "d/m/Y":
-				format = "02/01/2006"
-			case "m/d/Y":
-				format = "01/02/2006"
-			}
+			format := tools.GetDatetimeFormat(dateFormat, display == "datetime")
 
 			// datetime values are in context of user timezone
 			if display == "datetime" {
 				loc = locUser
-				format = fmt.Sprintf("%s 15:04:05", format)
 			}
 			return time.Unix(value, 0).In(loc).Format(format)
 		case "time":
 			return time.Unix(value, 0).UTC().Format("15:04:05")
 		}
-		return fmt.Sprintf("%v", value)
+		return tools.FormatStringNumber(fmt.Sprintf("%v", value), "", charThou)
 	}
 
 	for i, j := 0, len(rows); i < j; i++ {
@@ -363,12 +364,14 @@ func dataToCsv(ctx context.Context, writer *csv.Writer, get types.DataGet, locUs
 				stringValues[pos] = parseIntegerValues(columnAttributeContentUse[pos], int64(v))
 			case int64:
 				stringValues[pos] = parseIntegerValues(columnAttributeContentUse[pos], v)
+			case float32, float64:
+				stringValues[pos] = tools.FormatStringNumber(fmt.Sprintf("%g", v), charDec, charThou)
 			case pgtype.Numeric:
-				b, err := json.Marshal(v)
+				f, err := v.Float64Value()
 				if err != nil {
 					return 0, err
 				}
-				stringValues[pos] = string(b)
+				stringValues[pos] = tools.FormatFloatNumber(f.Float64, -1, charDec, charThou)
 			default:
 				stringValues[pos] = fmt.Sprintf("%v", value)
 			}

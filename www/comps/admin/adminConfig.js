@@ -1,7 +1,6 @@
 import {getBuildFromVersion} from '../shared/generic.js';
-export {MyAdminConfig as default};
 
-let MyAdminConfig = {
+export default {
 	name:'my-admin-config',
 	template:`<div class="contentBox admin-config" v-if="ready">
 		<div class="top">
@@ -46,7 +45,7 @@ let MyAdminConfig = {
 								{{ updateCheckText }}
 							</td>
 							<td v-else>
-								<a href="https://tech.eus/t4/download.php" target="_blank">{{ updateCheckText }}</a>
+								<a href="https://rei3.de/download" target="_blank">{{ updateCheckText }}</a>
 							</td>
 						</tr>
 						<tr>
@@ -158,90 +157,6 @@ let MyAdminConfig = {
 						:style="loginBgStyle(n-1)"
 					></div>
 				</div>
-			</div>
-			
-			<!-- repository -->
-			<div class="contentPart">
-				<div class="contentPartHeader">
-					<img class="icon" src="images/box.png" />
-					<h1>{{ capApp.titleRepo }}</h1>
-				</div>
-				
-				<table class="default-inputs">
-					<tbody>
-						<tr>
-							<td>{{ capApp.repoUrl }}</td>
-							<td><input v-model="configInput.repoUrl" /></td>
-						</tr>
-						<tr>
-							<td>{{ capGen.username }}</td>
-							<td><input v-model="configInput.repoUser" /></td>
-						</tr>
-						<tr>
-							<td>{{ capGen.password }}</td>
-							<td><input type="password" v-model="configInput.repoPass" /></td>
-						</tr>
-						<tr>
-							<td>{{ capApp.repoSkipVerify }}</td>
-							<td>
-								<my-bool-string-number
-									v-model="configInput.repoSkipVerify"
-								/>
-							</td>
-						</tr>
-						<tr>
-							<td>{{ capApp.repoFeedback }}</td>
-							<td>
-								<my-bool-string-number
-									v-model="configInput.repoFeedback"
-								/>
-							</td>
-						</tr>
-						<tr><td colspan="2"><hr /></td></tr>
-						<tr><td colspan="2"><b>{{ capApp.repoKeyManagement }}</b></td></tr>
-						<tr>
-							<td>{{ capApp.repoPublicKeys }}</td>
-							<td>
-								<div class="repo-key" v-for="(key,name) in publicKeys">
-									<my-button
-										:active="false"
-										:caption="name"
-										:naked="true"
-									/>
-									<div class="row gap">
-										<my-button image="search.png"
-											@trigger="publicKeyShow(name,key)"
-										/>
-										<my-button image="cancel.png"
-											@trigger="publicKeyRemove(name)"
-											:cancel="true"
-										/>
-									</div>
-								</div>
-							</td>
-						</tr>
-						<tr>
-							<td>{{ capApp.repoPublicKeyAdd }}</td>
-							<td>
-								<div class="column gap">
-									<input v-model="publicKeyInputName"
-										:placeholder="capApp.repoPublicKeyInputNameHint"
-									/>
-									<textarea v-model="publicKeyInputValue"
-										:placeholder="capApp.repoPublicKeyInputValueHint"
-									></textarea>
-									<div>
-										<my-button image="add.png"
-											@trigger="publicKeyAdd"
-											:active="publicKeyInputName !== '' && publicKeyInputValue !== ''"
-											:caption="capGen.button.add"
-										/>
-									</div>
-								</div>
-							</td>
-						</tr>
-					</tbody>
-				</table>
 			</div>
 			
 			<!-- performance -->
@@ -363,7 +278,7 @@ let MyAdminConfig = {
 				
 				<div class="column">
 					<my-button image="cancel.png"
-						v-for="(c,i) in adminMailContacts"
+						v-for="(c,i) in adminMailAddresses"
 						@trigger="adminMailDel(i)"
 						:caption="c"
 						:naked="true"
@@ -381,6 +296,26 @@ let MyAdminConfig = {
 						@trigger="adminMailAdd"
 						:active="adminMailInput !== ''"
 					/>
+				</div>
+			</div>
+			
+			<!-- client events -->
+			<div class="contentPart">
+				<div class="contentPartHeader">
+					<img class="icon" src="images/screen.png" />
+					<h1>{{ capApp.titleGlobalHotkeys }}</h1>
+				</div>
+
+				<div class="column wrap gap-large">
+					<span>{{ capApp.hotkeyModAvailable }}</span>
+					<div class="row gap-large wrap">
+						<my-button-check
+							v-for="k in hotkeyMod"
+							@trigger="hotkeyModExclToggle(k)"
+							:caption="capGen.option.modifierKey[k]"
+							:modelValue="!hotkeyModExcl.includes(k)"
+						/>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -403,8 +338,6 @@ let MyAdminConfig = {
 			bruteforceCountBlocked:0,
 			bruteforceCountTracked:0,
 			loginBackgroundCount:12,
-			publicKeyInputName:'',
-			publicKeyInputValue:'',
 			ready:false
 		};
 	},
@@ -417,11 +350,7 @@ let MyAdminConfig = {
 		this.$store.commit('keyDownHandlerDel',this.set);
 	},
 	computed:{
-		publicKeys:{
-			get()  { return JSON.parse(this.configInput.repoPublicKeys); },
-			set(v) { this.configInput.repoPublicKeys = JSON.stringify(v); }
-		},
-		updateCheckText:(s) => {
+		updateCheckText:s => {
 			if(s.config.updateCheckVersion === '')
 				return s.capApp.updateCheckUnknown;
 			
@@ -433,21 +362,25 @@ let MyAdminConfig = {
 			
 			return s.capApp.updateCheckNewer;
 		},
+
+		// values
+		adminMailAddresses:s => JSON.parse(s.configInput.adminMailAddresses),
+		hotkeyModExcl:     s => JSON.parse(s.configInput.hotkeyModExcl),
+		loginBackgrounds:  s => JSON.parse(s.configInput.loginBackgrounds),
 		
 		// simple
-		adminMailContacts:(s) => s.configInput.adminMails === '' ? [] : JSON.parse(s.configInput.adminMails),
-		hasChanges:       (s) => JSON.stringify(s.config) !== JSON.stringify(s.configInput),
-		loginBackgrounds: (s) => JSON.parse(s.configInput.loginBackgrounds),
+		hasChanges:s => JSON.stringify(s.config) !== JSON.stringify(s.configInput),
 		
 		// stores
-		appVersion:  (s) => s.$store.getters['local/appVersion'],
-		token:       (s) => s.$store.getters['local/token'],
-		config:      (s) => s.$store.getters.config,
-		license:     (s) => s.$store.getters.license,
-		licenseDays: (s) => s.$store.getters.licenseDays,
-		licenseValid:(s) => s.$store.getters.licenseValid,
-		capApp:      (s) => s.$store.getters.captions.admin.config,
-		capGen:      (s) => s.$store.getters.captions.generic
+		appVersion:  s => s.$store.getters['local/appVersion'],
+		token:       s => s.$store.getters['local/token'],
+		capApp:      s => s.$store.getters.captions.admin.config,
+		capGen:      s => s.$store.getters.captions.generic,
+		config:      s => s.$store.getters.config,
+		hotkeyMod:   s => s.$store.getters.constants.hotkeyMod,
+		license:     s => s.$store.getters.license,
+		licenseDays: s => s.$store.getters.licenseDays,
+		licenseValid:s => s.$store.getters.licenseValid
 	},
 	methods:{
 		// externals
@@ -462,15 +395,22 @@ let MyAdminConfig = {
 		adminMailAdd() {
 			if(this.adminMailInput === '') return;
 			
-			let v = JSON.parse(JSON.stringify(this.adminMailContacts));
+			let v = JSON.parse(JSON.stringify(this.adminMailAddresses));
 			v.push(this.adminMailInput);
-			this.configInput.adminMails = JSON.stringify(v);
+			this.configInput.adminMailAddresses = JSON.stringify(v);
 			this.adminMailInput = '';
 		},
 		adminMailDel(index) {
-			let v = JSON.parse(JSON.stringify(this.adminMailContacts));
+			let v = JSON.parse(JSON.stringify(this.adminMailAddresses));
 			v.splice(index,1);
-			this.configInput.adminMails = JSON.stringify(v);
+			this.configInput.adminMailAddresses = JSON.stringify(v);
+		},
+		hotkeyModExclToggle(key) {
+			let   v   = JSON.parse(JSON.stringify(this.hotkeyModExcl));
+			const pos = v.indexOf(key);
+			if(pos === -1) v.push(key);
+			else           v.splice(pos,1);
+			this.configInput.hotkeyModExcl = JSON.stringify(v);
 		},
 		informBuilderMode() {
 			if(this.configInput.builderMode === '0')
@@ -498,24 +438,6 @@ let MyAdminConfig = {
 			else           list.push(n);
 			
 			this.configInput.loginBackgrounds = JSON.stringify(list);
-		},
-		publicKeyShow(name,key) {
-			this.$store.commit('dialog',{
-				captionBody:key,
-				captionTop:name,
-				image:'key.png',
-				textDisplay:'textarea'
-			});
-		},
-		publicKeyAdd() {
-			this.publicKeys[this.publicKeyInputName] = this.publicKeyInputValue;
-			this.publicKeys = this.publicKeys;
-		},
-		publicKeyRemove(keyName) {
-			if(typeof this.publicKeys[keyName] !== 'undefined')
-				delete this.publicKeys[keyName];
-			
-			this.publicKeys = this.publicKeys;
 		},
 		showHelp(msg) {
 			this.$store.commit('dialog',{ captionBody:msg });

@@ -7,6 +7,7 @@ import {srcBase64}        from './shared/image.js';
 import {getCaption}       from './shared/language.js';
 import {
 	getDateAtUtcZero,
+	getDateFormatNoYear,
 	getDateFromWeek,
 	getUnixFromDate,
 	getWeeksInYear,
@@ -65,7 +66,11 @@ const MyCalendarDateSelect = {
 			v-if="isWeek"
 			v-model="weekInput"
 		>
-			<option v-for="i in weeksInYear" :value="i">
+			<option
+				v-for="i in weeksInYear"
+				:title="weekInputTitle(i,yearInput)"
+				:value="i"
+			>
 				{{ capApp.option.calendarWeek + ' ' + i }}
 			</option>
 		</select>
@@ -120,13 +125,14 @@ const MyCalendarDateSelect = {
 		},
 		
 		// simple
-		isDays:     (s) => s.daysShow === 1 || s.daysShow === 3,
-		isMonth:    (s) => s.daysShow === 42,
-		isWeek:     (s) => s.daysShow === 5 || s.daysShow === 7,
-		weeksInYear:(s) => s.isWeek ? s.getWeeksInYear(s.modelValue.getFullYear()) : 0,
+		isDays:     s => s.daysShow === 1 || s.daysShow === 3,
+		isMonth:    s => s.daysShow === 42,
+		isWeek:     s => s.daysShow === 5 || s.daysShow === 7,
+		weeksInYear:s => s.isWeek ? s.getWeeksInYear(s.modelValue.getFullYear()) : 0,
 		
 		// stores
-		capApp:(s) => s.$store.getters.captions.calendar
+		capApp:  s => s.$store.getters.captions.calendar,
+		settings:s => s.$store.getters.settings
 	},
 	emits:['update:modelValue'],
 	mounted() {
@@ -139,9 +145,21 @@ const MyCalendarDateSelect = {
 	},
 	methods:{
 		// external
+		getDateFormatNoYear,
 		getDateFromWeek,
 		getWeek,
 		getWeeksInYear,
+
+		// presentation
+		weekInputTitle(week,year) {
+			const d0 = getDateFromWeek(week,year);
+			if(this.settings.sundayFirstDow)
+				d0.setDate(d0.getDate()-1);
+
+			const d1 = new Date(d0.getTime())
+			d1.setDate(d1.getDate()+6);
+			return `${this.getDateFormatNoYear(d0,this.settings.dateFormat)} - ${this.getDateFormatNoYear(d1,this.settings.dateFormat)}`;
+		},
 		
 		// actions
 		handleHotkeys(e) {
@@ -223,7 +241,7 @@ const MyCalendar = {
 		<!-- header -->
 		<div class="top lower">
 			<div class="area nowrap">
-				<my-button image="new.png" style="background-color: green;"
+				<my-button image="new.png"
 					v-if="hasCreate"
 					@trigger="$emit('open-form',[],[],false)"
 					@trigger-middle="$emit('open-form',[],[],true)"
@@ -311,38 +329,38 @@ const MyCalendar = {
 		</div>
 		
 		<div class="calendar-content">
-			<my-calendar-days class="scroll"
+			<my-calendar-days
 				v-if="!isMonth"
 				@clipboard="$emit('clipboard')"
 				@date-selected="dateSelected"
 				@open-form="(...args) => $emit('open-form',...args)"
-				:columns="columns"
-				:date="date"
-				:date0="date0"
-				:date1="date1"
-				:daysShow="daysShow"
+				:columns
+				:date
+				:date0
+				:date1
+				:daysShow
 				:hasColor="attributeIdColor !== null"
-				:hasCreate="hasCreate"
-				:hasUpdate="hasUpdate"
+				:hasCreate
+				:hasUpdate
 				:isRange="true"
-				:rows="rows"
-				:zoom="zoom"
+				:rows
+				:zoom
 			/>
 			<my-calendar-month class="scroll"
 				v-if="isMonth"
 				@date-selected="dateSelected"
 				@open-form="(...args) => $emit('open-form',...args)"
 				:columns="columns"
-				:date="date"
-				:date0="date0"
-				:date1="date1"
-				:dateSelect0="dateSelect0"
-				:dateSelect1="dateSelect1"
+				:date
+				:date0
+				:date1
+				:dateSelect0
+				:dateSelect1
 				:hasColor="attributeIdColor !== null"
-				:hasCreate="hasCreate"
-				:hasUpdate="hasUpdate"
+				:hasCreate
+				:hasUpdate
 				:isRange="true"
-				:rows="rows"
+				:rows
 			/>
 			
 			<!-- inline form -->

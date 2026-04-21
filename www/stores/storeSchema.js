@@ -1,7 +1,4 @@
-import {getQueryTemplateIfNull} from '../comps/shared/query.js';
-export {MyStoreSchema as default};
-
-const MyStoreSchema = {
+export default {
 	namespaced:true,
 	state:{
 		languageCodes:[],       // language codes available, both official & community
@@ -13,6 +10,7 @@ const MyStoreSchema = {
 		attributeIdMap:{},
 		clientEventIdMap:{},
 		collectionIdMap:{},
+		docIdMap:{},
 		formIdMap:{},
 		iconIdMap:{},
 		indexIdMap:{},
@@ -33,82 +31,63 @@ const MyStoreSchema = {
 		formIdMapMenu:{}
 	},
 	mutations:{
-		delModule(state,payload) {
+		delModule(s,p) {
 			// just delete module reference
 			// lingering module entity references (forms, roles, etc.) do not hurt and are gone on next app start
-			delete(state.moduleIdMap[payload]);
+			delete(s.moduleIdMap[p]);
 		},
-		setModules(state,payload) {
-			const getFormIdsFromMenus = (menus) => {
+		setModules(s,p) {
+			const getFormIdsFromMenus = menus => {
 				for(const menu of menus) {
-					state.formIdMapMenu[menu.formId] = menu;
+					s.formIdMapMenu[menu.formId] = menu;
 					getFormIdsFromMenus(menu.menus);
 				}
 			};
-			const processFields = (fields) => {
-				for(let i = 0, j = fields.length; i < j; i++) {
-					if(typeof fields[i].query !== 'undefined')
-						fields[i].query = getQueryTemplateIfNull(fields[i].query);
-					
-					switch(fields[i].content) {
-						case 'container': fields[i].fields = processFields(fields[i].fields); break;
-						case 'tabs':
-							for(let x = 0, y = fields[i].tabs.length; x < y; x++) {
-								fields[i].tabs[x].fields = processFields(fields[i].tabs[x].fields);
-							}
-						break;
-					}
-				}
-				return fields;
-			};
 			
-			for(let mod of payload) {
+			for(let mod of p) {
 				mod.formNameMap = {};
 				
-				state.moduleIdMap[mod.id]     = mod;
-				state.moduleNameMap[mod.name] = mod;
+				s.moduleIdMap[mod.id]     = mod;
+				s.moduleNameMap[mod.name] = mod;
 				
 				// process articles
 				for(const art of mod.articles) {
-					state.articleIdMap[art.id] = art;
+					s.articleIdMap[art.id] = art;
 				}
 				
 				// process relations
 				for(const rel of mod.relations) {
-					state.relationIdMap[rel.id] = rel;
+					s.relationIdMap[rel.id] = rel;
 					
 					// process attributes
 					for(const atr of rel.attributes) {
-						state.attributeIdMap[atr.id] = atr;
+						s.attributeIdMap[atr.id] = atr;
 					}
 					
 					// process indexes
 					for(const ind of rel.indexes) {
-						state.indexIdMap[ind.id] = ind;
+						s.indexIdMap[ind.id] = ind;
 					}
 
 					// process presets
 					for(const pre of rel.presets) {
-						state.presetIdMap[pre.id] = pre;
+						s.presetIdMap[pre.id] = pre;
 					}
 				}
 				
 				// process PG triggers
 				for(const trg of mod.pgTriggers) {
-					state.pgTriggerIdMap[trg.id] = trg;
+					s.pgTriggerIdMap[trg.id] = trg;
 				}
 				
 				// process icons
 				for(const icon of mod.icons) {
-					state.iconIdMap[icon.id] = icon;
+					s.iconIdMap[icon.id] = icon;
 				}
 				
 				// process forms
 				for(let form of mod.forms) {
-					form.query  = getQueryTemplateIfNull(form.query);
-					form.fields = processFields(form.fields);
-					
-					state.formIdMap[form.id]   = form;
+					s.formIdMap[form.id]   = form;
 					mod.formNameMap[form.name] = form;
 				}
 				for(const mt of mod.menuTabs) {
@@ -117,101 +96,102 @@ const MyStoreSchema = {
 				
 				// process roles
 				for(const role of mod.roles) {
-					state.roleIdMap[role.id] = role;
+					s.roleIdMap[role.id] = role;
 				}
 				
 				// process search bars
 				for(const bar of mod.searchBars) {
-					bar.query  = getQueryTemplateIfNull(bar.query);
-					state.searchBarIdMap[bar.id] = bar;
+					s.searchBarIdMap[bar.id] = bar;
 				}
 				
 				// process collections
 				for(let collection of mod.collections) {
-					collection.query = getQueryTemplateIfNull(collection.query);
-					
-					state.collectionIdMap[collection.id] = collection;
+					s.collectionIdMap[collection.id] = collection;
 				}
 				
 				// process APIs
 				for(let api of mod.apis) {
-					api.query = getQueryTemplateIfNull(api.query);
-					
-					state.apiIdMap[api.id] = api;
+					s.apiIdMap[api.id] = api;
+				}
+				
+				// process documents
+				for(let doc of mod.docs) {
+					s.docIdMap[doc.id] = doc;
 				}
 				
 				// process client events
 				for(const clientEvent of mod.clientEvents) {
-					state.clientEventIdMap[clientEvent.id] = clientEvent;
+					s.clientEventIdMap[clientEvent.id] = clientEvent;
 				}
 
 				// process variables
 				for(const variable of mod.variables) {
-					state.variableIdMap[variable.id] = variable;
+					s.variableIdMap[variable.id] = variable;
 				}
 				
 				// process widgets
 				for(const widget of mod.widgets) {
-					state.widgetIdMap[widget.id] = widget;
+					s.widgetIdMap[widget.id] = widget;
 				}
 				
 				// process PG functions
 				for(const pgFunc of mod.pgFunctions) {
-					state.pgFunctionIdMap[pgFunc.id] = pgFunc;
+					s.pgFunctionIdMap[pgFunc.id] = pgFunc;
 				}
 				
 				// process JS functions
 				for(const jsFunc of mod.jsFunctions) {
-					state.jsFunctionIdMap[jsFunc.id] = jsFunc;
+					s.jsFunctionIdMap[jsFunc.id] = jsFunc;
 				}
 				
 				// process login forms
 				for(const loginForm of mod.loginForms) {
-					state.loginFormIdMap[loginForm.id] = loginForm;
+					s.loginFormIdMap[loginForm.id] = loginForm;
 				}
 			}
 		},
-		languageCodes:      (state,payload) => state.languageCodes       = payload,
-		presetIdMapRecordId:(state,payload) => state.presetIdMapRecordId = payload
+		languageCodes:      (s,p) => s.languageCodes       = p,
+		presetIdMapRecordId:(s,p) => s.presetIdMapRecordId = p
 	},
 	getters:{
-		apiIdMap:           (state) => state.apiIdMap,
-		articleIdMap:       (state) => state.articleIdMap,
-		attributeIdMap:     (state) => state.attributeIdMap,
-		clientEventIdMap:   (state) => state.clientEventIdMap,
-		collectionIdMap:    (state) => state.collectionIdMap,
-		formIdMap:          (state) => state.formIdMap,
-		formIdMapMenu:      (state) => state.formIdMapMenu,
-		iconIdMap:          (state) => state.iconIdMap,
-		indexIdMap:         (state) => state.indexIdMap,
-		jsFunctionIdMap:    (state) => state.jsFunctionIdMap,
-		languageCodes:      (state) => state.languageCodes,
-		loginFormIdMap:     (state) => state.loginFormIdMap,
-		moduleIdMap:        (state) => state.moduleIdMap,
-		moduleNameMap:      (state) => state.moduleNameMap,
-		pgFunctionIdMap:    (state) => state.pgFunctionIdMap,
-		pgTriggerIdMap:     (state) => state.pgTriggerIdMap,
-		presetIdMap:        (state) => state.presetIdMap,
-		presetIdMapRecordId:(state) => state.presetIdMapRecordId,
-		relationIdMap:      (state) => state.relationIdMap,
-		roleIdMap:          (state) => state.roleIdMap,
-		searchBarIdMap:     (state) => state.searchBarIdMap,
-		variableIdMap:      (state) => state.variableIdMap,
-		widgetIdMap:        (state) => state.widgetIdMap,
+		apiIdMap:           s => s.apiIdMap,
+		articleIdMap:       s => s.articleIdMap,
+		attributeIdMap:     s => s.attributeIdMap,
+		clientEventIdMap:   s => s.clientEventIdMap,
+		collectionIdMap:    s => s.collectionIdMap,
+		docIdMap:           s => s.docIdMap,
+		formIdMap:          s => s.formIdMap,
+		formIdMapMenu:      s => s.formIdMapMenu,
+		iconIdMap:          s => s.iconIdMap,
+		indexIdMap:         s => s.indexIdMap,
+		jsFunctionIdMap:    s => s.jsFunctionIdMap,
+		languageCodes:      s => s.languageCodes,
+		loginFormIdMap:     s => s.loginFormIdMap,
+		moduleIdMap:        s => s.moduleIdMap,
+		moduleNameMap:      s => s.moduleNameMap,
+		pgFunctionIdMap:    s => s.pgFunctionIdMap,
+		pgTriggerIdMap:     s => s.pgTriggerIdMap,
+		presetIdMap:        s => s.presetIdMap,
+		presetIdMapRecordId:s => s.presetIdMapRecordId,
+		relationIdMap:      s => s.relationIdMap,
+		roleIdMap:          s => s.roleIdMap,
+		searchBarIdMap:     s => s.searchBarIdMap,
+		variableIdMap:      s => s.variableIdMap,
+		widgetIdMap:        s => s.widgetIdMap,
 		
-		languageCodesModules:(state) => {
+		languageCodesModules:s => {
 			let out = [];
-			for(const k in state.moduleIdMap) {
-				for(const lang of state.moduleIdMap[k].languages) {
-					if(!state.languageCodes.includes(lang))
+			for(const k in s.moduleIdMap) {
+				for(const lang of s.moduleIdMap[k].languages) {
+					if(!s.languageCodes.includes(lang))
 						out.push(lang);
 				}
 			}
 			return out;
 		},
-		modules:(state) => {
-			const getCombinedName = (m) => m.parentId === null ? m.name : `${state.moduleIdMap[m.parentId].name}_${m.name}`;
-			return Object.values(state.moduleIdMap).sort((a,b) => getCombinedName(a) < getCombinedName(b) ? -1 : 1);
+		modules:s => {
+			const getCombinedName = m => m.parentId === null ? m.name : `${s.moduleIdMap[m.parentId].name}_${m.name}`;
+			return Object.values(s.moduleIdMap).sort((a,b) => getCombinedName(a) < getCombinedName(b) ? -1 : 1);
 		}
 	}
 };

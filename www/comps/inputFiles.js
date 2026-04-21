@@ -30,10 +30,7 @@ const MyInputFilesName = {
 	},
 	emits:['update:name'],
 	computed:{
-		value:(s) => {
-			return typeof s.change !== 'undefined' && s.change.name !== ''
-				? s.change.name : s.name;
-		},
+		value:(s) => typeof s.change !== 'undefined' && s.change.name !== '' ? s.change.name : s.name,
 		
 		// store
 		capApp:(s) => s.$store.getters.captions.input.files
@@ -234,7 +231,7 @@ const MyInputFiles = {
 						<td v-if="!noSpace">{{ displayDate(f.changed) }}</td>
 						<td>
 							<div class="row">
-								<a target="_self" download
+								<a target="_blank"
 									:href="getAttributeFileVersionHref(attributeId,f.id,f.name,f.version,token)"
 								>
 									<my-button image="download.png"
@@ -255,7 +252,7 @@ const MyInputFiles = {
 			<!-- list comfortable -->
 			<div class="listComfort" v-if="viewListComfort">
 				<div class="item" v-for="f in filesProcessed">
-					<a draggable="false" target="_self" download
+					<a draggable="false" target="_blank"
 						:href="getAttributeFileVersionHref(attributeId,f.id,f.name,f.version,token)"
 						:title="capApp.button.downloadHint"
 					>
@@ -293,7 +290,7 @@ const MyInputFiles = {
 			<!-- gallery -->
 			<div class="gallery" v-if="viewGallery" >
 				<div class="item" v-for="f in filesProcessed">
-					<a draggable="false" target="_self" download
+					<a draggable="false" target="_blank"
 						:href="getAttributeFileVersionHref(attributeId,f.id,f.name,f.version,token)"
 						:title="capApp.button.downloadHint"
 					>
@@ -459,12 +456,28 @@ const MyInputFiles = {
 			// model value is either:
 			// * null, empty input/no files -> reset input
 			// * array of files, initial attribute value -> initialize input
-			// * object with file changes (removed, renamed, ...) -> ignore, input already has this state
+			// * object with file changes (removed, renamed, ...)
 			if(this.modelValue === null || Array.isArray(this.modelValue)) {
 				let v = JSON.parse(JSON.stringify(this.modelValue));
 				this.files = v !== null ? v : [];
 				this.fileIdMapChange = {};
 				this.$emit('file-count-change',this.files.length);
+			} else {
+				// modelValue can be updated from outside (PDF generation) -> add unknown file changes
+				for(const fileId in this.modelValue.fileIdMapChange) {
+					if(this.fileIdMapChange[fileId] !== undefined)
+						continue;
+
+					const c = this.modelValue.fileIdMapChange[fileId];
+					this.files.push({
+						changed:Math.floor(new Date().getTime() / 1000),
+						id:fileId,
+						name:c.name,
+						size:0,
+						version:c.version
+					});
+					this.fileIdMapChange[fileId] = c;
+				}
 			}
 		},
 		
@@ -638,7 +651,7 @@ const MyInputFiles = {
 			}
 		},
 		update(fileId,action,name) {
-			if(typeof this.fileIdMapChange[fileId] === 'undefined') {
+			if(this.fileIdMapChange[fileId] === undefined) {
 				this.fileIdMapChange[fileId] = {
 					action:action,
 					name:name,
@@ -731,7 +744,7 @@ const MyInputFiles = {
 				let formData = new FormData();
 				formData.append('token',this.token);
 				formData.append('attributeId',this.attributeId);
-				formData.append('fileId',this.getNilUuid())
+				formData.append('fileId',this.getNilUuid());
 				formData.append('file',file);
 				xhr.open('POST','data/upload',true);
 				xhr.send(formData);

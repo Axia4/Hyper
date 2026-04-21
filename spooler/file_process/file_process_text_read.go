@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func doTextRead(fileId uuid.UUID, fileVersion pgtype.Int8, pgFunctionId uuid.UUID) error {
+func doTextRead(fileId uuid.UUID, fileVersion pgtype.Int8, pgFunctionId uuid.UUID, hasCallbackValue bool, callbackValue pgtype.Text) error {
 
 	if fileId.IsNil() {
 		return errFileIdNil
@@ -31,16 +31,19 @@ func doTextRead(fileId uuid.UUID, fileVersion pgtype.Int8, pgFunctionId uuid.UUI
 	// access schema cache
 	cache.Schema_mx.RLock()
 	fnc, exists := cache.PgFunctionIdMap[pgFunctionId]
+	cache.Schema_mx.RUnlock()
+
 	if !exists {
-		cache.Schema_mx.RUnlock()
 		return handler.ErrSchemaUnknownPgFunction(pgFunctionId)
 	}
+
+	cache.Schema_mx.RLock()
 	mod, exists := cache.ModuleIdMap[fnc.ModuleId]
+	cache.Schema_mx.RUnlock()
+
 	if !exists {
-		cache.Schema_mx.RUnlock()
 		return handler.ErrSchemaUnknownModule(fnc.ModuleId)
 	}
-	cache.Schema_mx.RUnlock()
 
 	// define paths
 	filePathSource := data.GetFilePathVersion(fileId, fileVersion.Int64)
@@ -62,8 +65,14 @@ func doTextRead(fileId uuid.UUID, fileVersion pgtype.Int8, pgFunctionId uuid.UUI
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, fmt.Sprintf(`SELECT "%s"."%s"($1)`, mod.Name, fnc.Name), string(fileContent)); err != nil {
-		return err
+	if hasCallbackValue {
+		if _, err := tx.Exec(ctx, fmt.Sprintf(`SELECT "%s"."%s"($1,$2)`, mod.Name, fnc.Name), string(fileContent), callbackValue); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, fmt.Sprintf(`SELECT "%s"."%s"($1)`, mod.Name, fnc.Name), string(fileContent)); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

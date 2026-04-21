@@ -1,14 +1,13 @@
-import MyBuilderOpenFormInput          from './builderOpenFormInput.js';
-import {getCollectionConsumerTemplate} from '../shared/collection.js';
+import MyBuilderOpenForm              from './builderOpenForm.js';
+import {getTemplateCollectionConsumer} from '../shared/builderTemplate.js';
 import {
 	getDependentModules,
 	getItemTitleColumn
 } from '../shared/builder.js';
-export {MyBuilderCollectionInput as default};
 
-let MyBuilderCollectionInput = {
+export default {
 	name:'my-builder-collection-input',
-	components:{MyBuilderOpenFormInput},
+	components:{MyBuilderOpenForm},
 	template:`<table class="builder-collection-input">
 		<tbody>
 			<tr>
@@ -47,12 +46,11 @@ let MyBuilderCollectionInput = {
 				<!-- form open input -->
 				<td>{{ capGen.formOpen }}</td>
 				<td>
-					<my-builder-open-form-input
-						@update:openForm="openFormInput = $event"
+					<my-builder-open-form
+						v-model="openFormInput"
 						:allowAllForms="true"
-						:module="module"
-						:openForm="openFormInput"
-						:readonly="readonly"
+						:module
+						:readonly
 					/>
 				</td>
 			</tr>
@@ -66,7 +64,7 @@ let MyBuilderCollectionInput = {
 							@update:modelValue="setFlag('multiValue',$event)"
 							:caption="capApp.multiValue"
 							:modelValue="consumer.flags.includes('multiValue')"
-							:readonly="readonly"
+							:readonly
 						/>
 						<!-- do not display if value is empty input -->
 						<my-button-check
@@ -74,7 +72,7 @@ let MyBuilderCollectionInput = {
 							@update:modelValue="setFlag('noDisplayEmpty',$event)"
 							:caption="capApp.noDisplayEmpty"
 							:modelValue="consumer.flags.includes('noDisplayEmpty')"
-							:readonly="readonly"
+							:readonly
 						/>
 						<!-- show aggregated row count instead of value -->
 						<my-button-check
@@ -82,7 +80,7 @@ let MyBuilderCollectionInput = {
 							@update:modelValue="setFlag('showRowCount',$event)"
 							:caption="capApp.showRowCount"
 							:modelValue="consumer.flags.includes('showRowCount')"
-							:readonly="readonly"
+							:readonly
 						/>
 					</div>
 				</td>
@@ -90,7 +88,7 @@ let MyBuilderCollectionInput = {
 			<tr v-if="collectionSet && showOnMobile">
 				<!-- show on mobile input -->
 				<td>{{ capApp.onMobile }}</td>
-				<td><my-bool v-model="onMobileInput" :readonly="readonly" /></td>
+				<td><my-bool v-model="onMobileInput" :readonly /></td>
 			</tr>
 			<tr>
 				<td>
@@ -121,7 +119,7 @@ let MyBuilderCollectionInput = {
 			get() {
 				return this.consumer !== null
 					? JSON.parse(JSON.stringify(this.consumer))
-					: this.getCollectionConsumerTemplate();
+					: this.getTemplateCollectionConsumer();
 			}
 		},
 		collectionIdInput:{
@@ -152,9 +150,9 @@ let MyBuilderCollectionInput = {
 	},
 	methods:{
 		// externals
-		getCollectionConsumerTemplate,
 		getDependentModules,
 		getItemTitleColumn,
+		getTemplateCollectionConsumer,
 		
 		// actions
 		set(name,value) {

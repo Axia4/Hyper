@@ -12,8 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func DataGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
-	loginId int64) (interface{}, error) {
+func DataGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var (
 		err   error
@@ -40,8 +39,7 @@ func DataGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
 	return res, nil
 }
 
-func DataSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
-	loginId int64) (interface{}, error) {
+func DataSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var (
 		err error
@@ -60,8 +58,7 @@ func DataSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
 	return res, nil
 }
 
-func DataDel_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
-	loginId int64) (interface{}, error) {
+func DataDel_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var req struct {
 		RelationId uuid.UUID `json:"relationId"`
@@ -74,24 +71,21 @@ func DataDel_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
 	return nil, data.Del_tx(ctx, tx, req.RelationId, req.RecordId, loginId)
 }
 
-// data log
-func DataLogGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
-	loginId int64) (interface{}, error) {
+func DataLogGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var req struct {
-		RecordId     int64       `json:"recordId"`
+		RelationId   uuid.UUID   `json:"relationId"`
 		AttributeIds []uuid.UUID `json:"attributeIds"`
+		RecordIds    []int64     `json:"recordIds"`
 	}
 
 	if err := json.Unmarshal(reqJson, &req); err != nil {
 		return nil, err
 	}
-	return data.GetLogs_tx(ctx, tx, req.RecordId, req.AttributeIds, loginId)
+	return data.GetLogs_tx(ctx, tx, req.RelationId, req.AttributeIds, req.RecordIds, loginId)
 }
 
-// data SQL
-func DataSqlGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
-	loginId int64) (interface{}, error) {
+func DataSqlGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var req types.DataGet
 	if err := json.Unmarshal(reqJson, &req); err != nil {
@@ -105,9 +99,7 @@ func DataSqlGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
 	return query, nil
 }
 
-// data keys
-func DataGetKeys_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
-	loginId int64) (interface{}, error) {
+func DataGetKeys_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var req struct {
 		RelationId uuid.UUID `json:"relationId"`
@@ -119,7 +111,7 @@ func DataGetKeys_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage,
 	}
 	return data_enc.GetKeys_tx(ctx, tx, req.RelationId, req.RecordIds, loginId)
 }
-func DataSetKeys_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (interface{}, error) {
+func DataSetKeys_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
 
 	var req struct {
 		RelationId uuid.UUID              `json:"relationId"`
@@ -131,4 +123,12 @@ func DataSetKeys_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (in
 		return nil, err
 	}
 	return nil, data_enc.SetKeys_tx(ctx, tx, req.RelationId, req.RecordId, req.EncKeys)
+}
+
+func DataGetRecordTitles_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
+	var relationIdMapRecordIds map[uuid.UUID][]int64
+	if err := json.Unmarshal(reqJson, &relationIdMapRecordIds); err != nil {
+		return nil, err
+	}
+	return data.GetRecordTitles_tx(ctx, tx, relationIdMapRecordIds, loginId)
 }

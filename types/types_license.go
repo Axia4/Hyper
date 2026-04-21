@@ -10,5 +10,5 @@ type License struct {
 }
 
 type LicenseFile struct {
-	LicenseId  string  `json:"id"`
+	LicenseId string `json:"id"`
 }

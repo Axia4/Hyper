@@ -79,12 +79,14 @@ export default {
 					<my-list-csv
 						v-if="showCsv"
 						@reload="get"
+						@set-login-option="(...args) => $emit('set-login-option',args[0],args[1])"
 						:columns="columns"
 						:columnBatches="columnBatches"
 						:filters="filtersCombined"
 						:isExport="csvExport"
 						:isImport="csvImport"
 						:joins="relationsJoined"
+						:loginOptions
 						:orders="orders"
 						:query="query"
 					/>
@@ -140,10 +142,9 @@ export default {
 
 		<my-list-input-rows
 			v-if="isInput && !inputAsFlow"
-			@clicked="clickInputRow"
 			@clicked-open="clickOpen($event,false)"
 			@clicked-open-middle="clickOpen($event,true)"
-			@clicked-row="inputTriggerRow($event)"
+			@clicked-row="clickInputRow();inputTriggerRow($event)"
 			@clicked-row-remove="inputTriggerRowRemove($event)"
 			@focus="focus"
 			:columns="columns"
@@ -168,7 +169,6 @@ export default {
 			@key-pressed="updatedTextInput"
 			@text-updated="filtersQuick = $event"
 			:anyRows="anyInputRows"
-			:focused="focused"
 			:readonly="inputIsReadonly"
 			:showCreate="hasCreate"
 			:text="filtersQuick"
@@ -187,7 +187,7 @@ export default {
 					<slot name="input-icon" />
 					
 					<!-- record actions -->
-					<my-button image="new.png" style="background-color: green;"
+					<my-button image="new.png"
 						v-if="hasCreate"
 						@trigger="$emit('open-form',[],false)"
 						@trigger-middle="$emit('open-form',[],true)"
@@ -664,9 +664,9 @@ export default {
 		inputValid:     { type:Boolean, required:false, default:true }
 	},
 	emits:[
-		'clipboard','close-inline','dropdown-show','open-form','open-form-bulk',
-		'record-count-change','record-removed','records-selected','records-selected-init',
-		'set-args','set-column-ids-by-user','set-collection-indexes','set-login-option'
+		'clipboard','close-inline','dropdown-show','open-form','open-form-bulk','record-count-change',
+		'record-removed','records-selected','records-selected-original','set-args','set-column-ids-by-user',
+		'set-collection-indexes','set-index-record-ids','set-login-option'
 	],
 	data() {
 		return {
@@ -731,7 +731,7 @@ export default {
 			if(!s.checkDataOptions(1,s.dataOptions))
 				return false;
 
-			for(let join of s.joins) {
+			for(const join of s.joins) {
 				if(join.applyDelete)
 					return true;
 			}
@@ -959,28 +959,24 @@ export default {
 			let arrow       = false;
 			
 			switch(ev.code) {
-				case 'ArrowDown':  arrow = true; focusTarget = ev.target.nextElementSibling;     break;
-				case 'ArrowLeft':  arrow = true; focusTarget = ev.target.previousElementSibling; break;
-				case 'ArrowRight': arrow = true; focusTarget = ev.target.nextElementSibling;     break;
-				case 'ArrowUp':    arrow = true; focusTarget = ev.target.previousElementSibling; break;
-				case 'Escape':     this.escape(ev); break;
+				case 'ArrowDown': arrow = true; focusTarget = ev.target.nextElementSibling;     break;
+				case 'ArrowUp':   arrow = true; focusTarget = ev.target.previousElementSibling; break;
+				case 'Escape':    return this.escape(ev); break;
 			}
 
-			// arrow key used and tab focus target is available
-			if(arrow && focusTarget !== null && focusTarget.tabIndex !== -1) {
-				ev.preventDefault();
-				return focusTarget.focus();
-			}
-			
-			// arrow key used in regular list input
+			// deal with arrow key in input if dropdown is available
 			if(arrow && this.isInput && !this.showAllValues) {
 				
-				// show dropdown
 				if(!this.dropdownShow) {
 					ev.preventDefault();
 					return this.$emit('dropdown-show',true);
 				}
-				
+
+				if(focusTarget !== null && focusTarget.tabIndex !== -1) {
+					ev.preventDefault();
+					return focusTarget.focus();
+				}
+
 				// focus first/last input element
 				if(this.dropdownShow && this.rows.length !== 0) {
 					ev.preventDefault();
@@ -990,6 +986,20 @@ export default {
 						: this.$refs[this.refTabindex+String(this.rows.length-1)][0].focus();
 				}
 			}
+		},
+		updateRecordIdsLoaded() {
+			let indexMapRecordIds = {};
+			for(const j of this.joins) {
+				indexMapRecordIds[j.index] = [];
+			}
+			for(const r of this.rows) {
+				for(const ind in r.indexRecordIds) {
+					if(r.indexRecordIds[ind] !== null)
+						indexMapRecordIds[ind].push(r.indexRecordIds[ind]);
+				}
+			}
+			this.$emit('set-index-record-ids',indexMapRecordIds);
+			this.$emit('record-count-change',this.count);
 		},
 		
 		// presentation
@@ -1059,7 +1069,7 @@ export default {
 				this.$emit('dropdown-show',true);
 		},
 		clickInputRow() {
-			if(!this.inputIsReadonly && !this.showAllValues && !this.showInputAddLine)
+			if(!this.inputIsReadonly && !this.showAllValues && (!this.showInputAddLine || this.inputMulti))
 				this.$emit('dropdown-show',!this.dropdownShow);
 		},
 		clickRow(row,middleClick) {
@@ -1254,6 +1264,8 @@ export default {
 			this.cardsOrderByColumnBatchIndex = columnBatchIndex;
 			if(columnBatchIndex !== -1)
 				this.setOrder(this.columnBatches[columnBatchIndex],true,true);
+			else
+				this.setOrders(this.ordersOriginal);
 		},
 		cardsToggleOrderBy() {
 			const wasAsc = this.orders[0].ascending;
@@ -1430,7 +1442,7 @@ export default {
 							this.rows  = rows;
 							this.selectReset();
 							this.reloadAggregations(false);
-							this.$emit('record-count-change',this.count);
+							this.updateRecordIdsLoaded();
 						},
 						this.consoleError
 					);
@@ -1521,7 +1533,7 @@ export default {
 							}
 						}
 						if(ids.length !== 0)
-							this.$emit('records-selected-init',this.inputMulti ? ids : ids[0]);
+							this.$emit('records-selected-original',this.inputMulti ? ids : ids[0]);
 						
 						this.inputAutoSelectDone = true;
 					}

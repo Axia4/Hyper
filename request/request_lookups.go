@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func lookupGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (interface{}, error) {
+func lookupGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, loginId int64) (any, error) {
 
 	var req struct {
 		Name string `json:"name"`
@@ -23,15 +23,6 @@ func lookupGet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage, login
 	switch req.Name {
 	case "access":
 		return cache.GetAccessById(loginId)
-
-	case "feedback":
-		var res struct {
-			Feedback    bool   `json:"feedback"`
-			FeedbackUrl string `json:"feedbackUrl"`
-		}
-		res.Feedback = config.GetUint64("repoFeedback") == 1
-		res.FeedbackUrl = config.GetString("repoUrl")
-		return res, nil
 
 	case "loginHasClient":
 		var hasClient bool

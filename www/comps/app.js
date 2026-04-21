@@ -176,18 +176,12 @@ export default {
 			
 			<!-- feedback window -->
 			<transition name="fade">
-				<my-feedback
-					v-if="isAtFeedback"
-					v-show="!loginSessionExpired"
-				/>
+				<my-feedback v-if="isAtFeedback" v-show="!loginSessionExpired" />
 			</transition>
 			
 			<!-- dialog window -->
 			<transition name="fade">
-				<my-dialog
-					v-if="isAtDialog"
-					v-show="!loginSessionExpired"
-				/>
+				<my-dialog v-if="isAtDialog" v-show="!loginSessionExpired" />
 			</transition>
 			
 			<!-- loading input blocker overlay -->
@@ -410,6 +404,7 @@ export default {
 		isAtFeedback:       (s) => s.$store.getters.isAtFeedback,
 		isAtModule:         (s) => s.$store.getters.isAtModule,
 		isMobile:           (s) => s.$store.getters.isMobile,
+		isSecureContext:    (s) => s.$store.getters.isSecureContext,
 		isWithoutMenuHeader:(s) => s.$store.getters.isWithoutMenuHeader,
 		keyDownHandlers:    (s) => s.$store.getters.keyDownHandlers,
 		loginEncLocked:     (s) => s.$store.getters.loginEncLocked,
@@ -436,6 +431,7 @@ export default {
 		setInterval(this.sessionExpireCheck,1000); // session expiration check
 		this.wsConnect();                          // connect to backend via websocket
 		this.resized();
+		this.$store.commit('isSecureContext', window.isSecureContext);
 
 		// register globally accessible functions
 		this.$store.commit('appFunctionsRegister',[
@@ -650,12 +646,14 @@ export default {
 					this.$store.commit('schema/presetIdMapRecordId',res.payload.presetIdMapRecordId);
 					this.$store.commit('captionMapCustom',res.payload.captionMapCustom);
 					this.$store.commit('clusterNodeName',res.payload.clusterNodeName);
+					this.$store.commit('hotkeyModExcl',res.payload.hotkeyModExcl);
 					this.$store.commit('mirrorMode',res.payload.mirror);
 					this.$store.commit('moduleIdMapMeta',res.payload.moduleIdMapMeta);
 					this.$store.commit('oauthClientIdMapOpenId',res.payload.oauthClientIdMapOpenId);
 					this.$store.commit('productionMode',res.payload.productionMode === 1);
 					this.$store.commit('pageTitleRefresh'); // update page title with new app name
 					this.$store.commit('pwaDomainMap',res.payload.pwaDomainMap);
+					this.$store.commit('reposFeedback',res.payload.reposFeedback);
 					this.$store.commit('searchDictionaries',res.payload.searchDictionaries);
 					this.$store.commit('systemMsg',res.payload.systemMsg);
 					this.$store.commit('tokenKeepEnable',res.payload.tokenKeepEnable);
@@ -736,7 +734,6 @@ export default {
 				ws.prepare('loginSetting','get',{}),
 				ws.prepare('loginWidgetGroups','get',{}),
 				ws.prepare('lookup','get',{name:'access'}),
-				ws.prepare('lookup','get',{name:'feedback'}),
 				ws.prepare('lookup','get',{name:'loginHasClient'}),
 				ws.prepare('lookup','get',{name:'loginKeys'})
 			];
@@ -754,20 +751,18 @@ export default {
 					this.$store.commit('settings',res[2].payload);
 					this.$store.commit('loginWidgetGroups',res[3].payload);
 					this.$store.commit('access',res[4].payload);
-					this.$store.commit('feedback',res[5].payload.feedback);
-					this.$store.commit('feedbackUrl',res[5].payload.feedbackUrl);
-					this.$store.commit('loginHasClient',res[6].payload);
+					this.$store.commit('loginHasClient',res[5].payload);
 					
-					if(res[7].payload.privateEnc !== null && res[7].payload.privateEncBackup !== null) {
+					if(this.isSecureContext && res[6].payload.privateEnc !== null && res[6].payload.privateEncBackup !== null) {
 						this.$store.commit('loginPrivateKey',null);
-						this.$store.commit('loginPrivateKeyEnc',res[7].payload.privateEnc);
-						this.$store.commit('loginPrivateKeyEncBackup',res[7].payload.privateEncBackup);
+						this.$store.commit('loginPrivateKeyEnc',res[6].payload.privateEnc);
+						this.$store.commit('loginPrivateKeyEncBackup',res[6].payload.privateEncBackup);
 						
-						await this.pemImport(res[7].payload.public,'RSA',true)
+						await this.pemImport(res[6].payload.public,'RSA',true)
 							.then(res => this.$store.commit('loginPublicKey',res))
 							.catch(this.setInitErr);
 						
-						const keyPem = await this.pemImportPrivateEnc(res[7].payload.privateEnc,this.loginKeyAes)
+						const keyPem = await this.pemImportPrivateEnc(res[6].payload.privateEnc,this.loginKeyAes)
 							.catch(this.setInitErr);
 						
 						// error is shown in header if private key cannot be decrypted
@@ -776,8 +771,8 @@ export default {
 					}
 					
 					if(this.isAdmin) {
-						this.$store.commit('config',res[8].payload);
-						this.$store.commit('license',res[9].payload);
+						this.$store.commit('config',res[7].payload);
+						this.$store.commit('license',res[8].payload);
 					}
 					
 					// load captions, then collections

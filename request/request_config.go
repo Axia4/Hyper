@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func ConfigGet() (interface{}, error) {
+func ConfigGet() (any, error) {
 
 	// not directly changeable configuration options
 	ignore := []string{"dbVersionCut", "tokenSecret"}
@@ -25,6 +25,18 @@ func ConfigGet() (interface{}, error) {
 			continue
 		}
 		res[name] = config.GetString(name)
+	}
+
+	for _, name := range config.NamesStringSlice {
+
+		if slices.Contains(ignore, name) {
+			continue
+		}
+		json, err := json.Marshal(config.GetStringSlice(name))
+		if err != nil {
+			return nil, err
+		}
+		res[name] = string(json)
 	}
 
 	for _, name := range config.NamesUint64 {
@@ -49,7 +61,7 @@ func ConfigGet() (interface{}, error) {
 	return res, nil
 }
 
-func ConfigSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (interface{}, error) {
+func ConfigSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
 
 	var req map[string]string
 	if err := json.Unmarshal(reqJson, &req); err != nil {
@@ -69,6 +81,16 @@ func ConfigSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (inte
 
 		if slices.Contains(config.NamesString, name) {
 			if err := config.SetString_tx(ctx, tx, name, value); err != nil {
+				return nil, err
+			}
+		} else if slices.Contains(config.NamesStringSlice, name) {
+
+			var val []string
+			if err := json.Unmarshal([]byte(value), &val); err != nil {
+				return nil, err
+			}
+
+			if err := config.SetStringSlice_tx(ctx, tx, name, val); err != nil {
 				return nil, err
 			}
 		} else if slices.Contains(config.NamesUint64, name) {

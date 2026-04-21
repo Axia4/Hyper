@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"r3/cache"
 	"r3/handler"
@@ -15,30 +16,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// check whether access to attribute is authorized
-// cases: getting or setting attribute values
-func authorizedAttribute(loginId int64, attributeId uuid.UUID, accessRequested types.Access) bool {
+// check whether access (DELETE, READ, WRITE) to attributes is authorized
+// returns false, if any attribute access is prohibited
+func authorizedAttributes(loginId int64, attributeIds []uuid.UUID, accessRequested types.Access) bool {
 
 	m, err := cache.GetAccessById(loginId)
 	if err != nil {
 		return false
 	}
 
-	// use attribute access first if specified (more specific access wins)
-	if access, exists := m.Attribute[attributeId]; exists {
-		return access >= accessRequested
-	}
+	for _, attributeId := range attributeIds {
 
-	// use relation access otherwise (inherited access)
-	atr, exists := cache.AttributeIdMap[attributeId]
-	if !exists {
+		// use attribute access first if specified (more specific access wins)
+		if access, exists := m.Attribute[attributeId]; exists && access >= accessRequested {
+			continue
+		}
+
+		// use relation access otherwise (inherited access)
+		atr, exists := cache.AttributeIdMap[attributeId]
+		if !exists {
+			return false
+		}
+
+		if access, exists := m.Relation[atr.RelationId]; exists && access >= accessRequested {
+			continue
+		}
+
+		// no access to attribute or relation
 		return false
 	}
-
-	if access, exists := m.Relation[atr.RelationId]; exists {
-		return access >= accessRequested
-	}
-	return false
+	return true
 }
 
 // check whether access to relation is authorized
@@ -58,7 +65,7 @@ func authorizedRelation(loginId int64, relationId uuid.UUID, accessRequested typ
 
 // check whether a relation uses logging
 func relationUsesLogging(retentionCount pgtype.Int4, retentionDays pgtype.Int4) bool {
-	return retentionCount.Valid || retentionDays.Valid
+	return (retentionCount.Valid && retentionCount.Int32 != 0) || (retentionDays.Valid && retentionDays.Int32 != 0)
 }
 
 // get the names of policy blacklist & whitelist functions (empty strings if no functions are available)
@@ -123,9 +130,6 @@ func getPolicyFunctionNames(loginId int64, policies []types.RelationPolicy, acti
 func getPolicyValues_tx(ctx context.Context, tx pgx.Tx, loginId int64,
 	relationId uuid.UUID, action string) ([]int64, []int64, bool, error) {
 
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
-
 	idsBlacklist := make([]int64, 0)
 	idsWhitelist := make([]int64, 0)
 
@@ -157,8 +161,7 @@ func getPolicyValues_tx(ctx context.Context, tx pgx.Tx, loginId int64,
 }
 
 // get applicable policy filter (e. g. WHERE clause) for data call
-func getPolicyFilter(loginId int64, action string, tableAlias string,
-	policies []types.RelationPolicy) (string, error) {
+func getPolicyFilter(loginId int64, action string, tableAlias string, policies []types.RelationPolicy) (string, error) {
 
 	if len(policies) == 0 {
 		return "", nil
@@ -198,4 +201,68 @@ func getFunctionName(pgFunctionId uuid.UUID) (string, error) {
 		return "", handler.ErrSchemaUnknownModule(fnc.ModuleId)
 	}
 	return fmt.Sprintf(`"%s"."%s"`, mod.Name, fnc.Name), nil
+}
+
+func GetRecordTitles_tx(ctx context.Context, tx pgx.Tx, relationIdMapRecordIds map[uuid.UUID][]int64, loginId int64) (map[uuid.UUID]map[int64]string, error) {
+
+	relationIdMapRecordIdMapTitle := make(map[uuid.UUID]map[int64]string)
+
+	for relId, recordIds := range relationIdMapRecordIds {
+
+		cache.Schema_mx.RLock()
+		rel, relExists := cache.RelationIdMap[relId]
+		mod, modExists := cache.ModuleIdMap[rel.ModuleId]
+		cache.Schema_mx.RUnlock()
+
+		if !relExists {
+			return nil, handler.ErrSchemaUnknownRelation(relId)
+		}
+		if !modExists {
+			return nil, handler.ErrSchemaUnknownModule(rel.ModuleId)
+		}
+
+		if len(rel.AttributeIdsTitle) == 0 {
+			return nil, fmt.Errorf("record title is not defined for relation '%s'", rel.Name)
+		}
+
+		if !authorizedAttributes(loginId, rel.AttributeIdsTitle, types.AccessRead) {
+			return nil, errors.New(handler.ErrUnauthorized)
+		}
+
+		attrNames := make([]string, 0)
+		for _, atrId := range rel.AttributeIdsTitle {
+			cache.Schema_mx.RLock()
+			atr, exists := cache.AttributeIdMap[atrId]
+			cache.Schema_mx.RUnlock()
+
+			// cast to TEXT in case mixed types are used (such as integer + text)
+			attrNames = append(attrNames, fmt.Sprintf("\"%s\"::TEXT", atr.Name))
+
+			if !exists {
+				return nil, handler.ErrSchemaUnknownAttribute(atrId)
+			}
+		}
+
+		rows, err := tx.Query(ctx, fmt.Sprintf(`
+			SELECT %s, ARRAY_TO_STRING(ARRAY[%s], ', ')
+			FROM %s.%s
+			WHERE %s = ANY($1)
+		`, schema.PkName, strings.Join(attrNames, ", "), mod.Name, rel.Name, schema.PkName), recordIds)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		relationIdMapRecordIdMapTitle[relId] = make(map[int64]string)
+		for rows.Next() {
+			var recordId int64
+			var recordTitle string
+			if err := rows.Scan(&recordId, &recordTitle); err != nil {
+				return nil, err
+			}
+			relationIdMapRecordIdMapTitle[relId][recordId] = recordTitle
+		}
+		rows.Close()
+	}
+	return relationIdMapRecordIdMapTitle, nil
 }

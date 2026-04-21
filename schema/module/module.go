@@ -8,10 +8,10 @@ import (
 	"r3/db/check"
 	"r3/schema"
 	"r3/schema/article"
-	"r3/schema/attribute"
 	"r3/schema/caption"
 	"r3/schema/compatible"
 	"r3/schema/pgFunction"
+	"r3/schema/relation"
 	"r3/types"
 	"slices"
 	"strings"
@@ -28,49 +28,23 @@ func Del_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	}
 
 	// drop e2ee data key relations for module relations with encryption
-	relIdsEncrypted := make([]uuid.UUID, 0)
+	relIds := make([]uuid.UUID, 0)
 	if err := tx.QueryRow(ctx, `
 		SELECT ARRAY_AGG(id)
 		FROM app.relation
 		WHERE module_id = $1
-		AND   encryption
-	`, id).Scan(&relIdsEncrypted); err != nil {
+	`, id).Scan(&relIds); err != nil {
 		return err
 	}
 
-	for _, relId := range relIdsEncrypted {
-		if _, err := tx.Exec(ctx, fmt.Sprintf(`
-			DROP TABLE IF EXISTS instance_e2ee."%s"
-		`, schema.GetEncKeyTableName(relId))); err != nil {
-			return err
-		}
-	}
-
-	// drop file attribute relations
-	atrIdsFile := make([]uuid.UUID, 0)
-	if err := tx.QueryRow(ctx, `
-		SELECT ARRAY_AGG(id)
-		FROM app.attribute
-		WHERE relation_id IN (
-			SELECT id
-			FROM app.relation
-			WHERE module_id = $1
-		)
-		AND content = 'files'
-	`, id).Scan(&atrIdsFile); err != nil {
-		return err
-	}
-
-	for _, atrId := range atrIdsFile {
-		if err := attribute.FileRelationsDelete_tx(ctx, tx, atrId); err != nil {
+	for _, relId := range relIds {
+		if err := relation.Del_tx(ctx, tx, relId); err != nil {
 			return err
 		}
 	}
 
 	// drop module schema
-	if _, err := tx.Exec(ctx, fmt.Sprintf(`DROP SCHEMA "%s" CASCADE`,
-		name)); err != nil {
-
+	if _, err := tx.Exec(ctx, fmt.Sprintf(`DROP SCHEMA "%s" CASCADE`, name)); err != nil {
 		return err
 	}
 
@@ -80,12 +54,11 @@ func Del_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 }
 
 func Get_tx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) ([]types.Module, error) {
-	modules := make([]types.Module, 0)
 
 	rows, err := tx.Query(ctx, `
-		SELECT id, parent_id, form_id, icon_id, icon_id_pwa1, icon_id_pwa2,
-			js_function_id_on_login, pg_function_id_login_sync, name, name_pwa, name_pwa_short,
-			color1, position, language_main, release_build, release_build_app, release_date,
+		SELECT id, parent_id, form_id, icon_id, icon_id_pwa1, icon_id_pwa2, js_function_id_on_login,
+			pg_function_id_login_sync, name, name_pwa, name_pwa_short, color1, position, 
+			language_main, release_build, release_build_app, release_date, release_log_categories,
 			ARRAY(
 				SELECT module_id_on
 				FROM app.module_depends
@@ -108,59 +81,67 @@ func Get_tx(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) ([]types.Module, er
 		WHERE id = ANY($1)
 	`, ids)
 	if err != nil {
-		return modules, err
+		return nil, err
 	}
 	defer rows.Close()
 
+	modules := make([]types.Module, 0)
 	for rows.Next() {
 		var m types.Module
-		if err := rows.Scan(&m.Id, &m.ParentId, &m.FormId, &m.IconId, &m.IconIdPwa1,
-			&m.IconIdPwa2, &m.JsFunctionIdOnLogin, &m.PgFunctionIdLoginSync, &m.Name,
-			&m.NamePwa, &m.NamePwaShort, &m.Color1, &m.Position, &m.LanguageMain,
-			&m.ReleaseBuild, &m.ReleaseBuildApp, &m.ReleaseDate, &m.DependsOn,
-			&m.ArticleIdsHelp, &m.Languages); err != nil {
+		if err := rows.Scan(&m.Id, &m.ParentId, &m.FormId, &m.IconId, &m.IconIdPwa1, &m.IconIdPwa2,
+			&m.JsFunctionIdOnLogin, &m.PgFunctionIdLoginSync, &m.Name, &m.NamePwa, &m.NamePwaShort,
+			&m.Color1, &m.Position, &m.LanguageMain, &m.ReleaseBuild, &m.ReleaseBuildApp, &m.ReleaseDate,
+			&m.ReleaseLogCategories, &m.DependsOn, &m.ArticleIdsHelp, &m.Languages); err != nil {
 
-			return modules, err
+			return nil, err
 		}
 		modules = append(modules, m)
 	}
+	rows.Close()
 
-	// get start forms & captions
+	// get sub entities
 	for i, mod := range modules {
 
 		mod.StartForms, err = getStartForms_tx(ctx, tx, mod.Id)
 		if err != nil {
-			return modules, err
+			return nil, err
 		}
-
+		mod.Releases, err = getReleases_tx(ctx, tx, mod.Id)
+		if err != nil {
+			return nil, err
+		}
 		mod.Captions, err = caption.Get_tx(ctx, tx, schema.DbModule, mod.Id, []string{"moduleTitle"})
 		if err != nil {
-			return modules, err
+			return nil, err
 		}
 		modules[i] = mod
 	}
 	return modules, nil
 }
 
-func Set_tx(ctx context.Context, tx pgx.Tx, mod types.Module) error {
-	_, err := SetReturnId_tx(ctx, tx, mod)
+func Set_tx(ctx context.Context, tx pgx.Tx, mod types.Module, fromLocal bool) error {
+	_, err := SetReturnId_tx(ctx, tx, mod, fromLocal)
 	return err
 }
-func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module) (uuid.UUID, error) {
+func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module, fromLocal bool) (uuid.UUID, error) {
 
 	if err := check.DbIdentifier(mod.Name); err != nil {
 		return mod.Id, err
 	}
 
+	// fix imports < 3.12: Missing zero release & release log categories
+	mod.Releases = compatible.FixMissingZeroRelease(mod.Releases)
+	mod.ReleaseLogCategories = compatible.FixMissingReleaseLogCategories(mod.ReleaseLogCategories)
+
 	if len(mod.LanguageMain) != 5 {
 		return mod.Id, errors.New("language code must have 5 characters")
 	}
 
-	create := mod.Id == uuid.Nil
-	known, err := schema.CheckCreateId_tx(ctx, tx, &mod.Id, schema.DbModule, "id")
+	known, err := schema.CheckId_tx(ctx, tx, mod.Id, schema.DbModule, "id")
 	if err != nil {
 		return mod.Id, err
 	}
+	isNew := fromLocal && !known
 
 	if strings.HasPrefix(mod.Name, "instance") {
 		return mod.Id, fmt.Errorf("application name must not start with 'instance'")
@@ -181,12 +162,12 @@ func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module) (uuid.UUID
 				icon_id_pwa1 = $4, icon_id_pwa2 = $5, js_function_id_on_login = $6,
 				pg_function_id_login_sync = $7, name = $8, name_pwa = $9, name_pwa_short = $10,
 				color1 = $11, position = $12, language_main = $13, release_build = $14,
-				release_build_app = $15, release_date = $16
-			WHERE id = $17
+				release_build_app = $15, release_date = $16, release_log_categories = $17
+			WHERE id = $18
 		`, mod.ParentId, mod.FormId, mod.IconId, mod.IconIdPwa1, mod.IconIdPwa2,
 			mod.JsFunctionIdOnLogin, mod.PgFunctionIdLoginSync, mod.Name, mod.NamePwa,
 			mod.NamePwaShort, mod.Color1, mod.Position, mod.LanguageMain, mod.ReleaseBuild,
-			mod.ReleaseBuildApp, mod.ReleaseDate, mod.Id); err != nil {
+			mod.ReleaseBuildApp, mod.ReleaseDate, mod.ReleaseLogCategories, mod.Id); err != nil {
 
 			return mod.Id, err
 		}
@@ -213,18 +194,18 @@ func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module) (uuid.UUID
 				id, parent_id, form_id, icon_id, icon_id_pwa1, icon_id_pwa2,
 				js_function_id_on_login, pg_function_id_login_sync, name, name_pwa,
 				name_pwa_short, color1, position, language_main, release_build,
-				release_build_app, release_date
+				release_build_app, release_date, release_log_categories
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		`, mod.Id, mod.ParentId, mod.FormId, mod.IconId, mod.IconIdPwa1, mod.IconIdPwa2,
 			mod.JsFunctionIdOnLogin, mod.PgFunctionIdLoginSync, mod.Name, mod.NamePwa,
-			mod.NamePwaShort, mod.Color1, mod.Position, mod.LanguageMain,
-			mod.ReleaseBuild, mod.ReleaseBuildApp, mod.ReleaseDate); err != nil {
+			mod.NamePwaShort, mod.Color1, mod.Position, mod.LanguageMain, mod.ReleaseBuild,
+			mod.ReleaseBuildApp, mod.ReleaseDate, mod.ReleaseLogCategories); err != nil {
 
 			return mod.Id, err
 		}
 
-		if create {
+		if isNew {
 			// generate entities that need to be created if module did not exist before
 			// otherwise they are imported with existing IDs (and foreign key references)
 
@@ -256,7 +237,7 @@ func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module) (uuid.UUID
 		}
 
 		// create module meta data record for instance
-		if err := module_meta.Create_tx(ctx, tx, mod.Id, false, create, mod.Position); err != nil {
+		if err := module_meta.Create_tx(ctx, tx, mod.Id, false, isNew, mod.Position); err != nil {
 			return mod.Id, err
 		}
 	}
@@ -340,8 +321,11 @@ func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module) (uuid.UUID
 		}
 	}
 
-	// set help articles
+	// set sub entities
 	if err := article.Assign_tx(ctx, tx, schema.DbModule, mod.Id, mod.ArticleIdsHelp); err != nil {
+		return mod.Id, err
+	}
+	if err := setReleases_tx(ctx, tx, mod.Id, mod.Releases); err != nil {
 		return mod.Id, err
 	}
 
@@ -354,9 +338,31 @@ func SetReturnId_tx(ctx context.Context, tx pgx.Tx, mod types.Module) (uuid.UUID
 	return mod.Id, caption.Set_tx(ctx, tx, mod.Id, mod.Captions)
 }
 
+func getDependsOn_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]uuid.UUID, error) {
+
+	rows, err := tx.Query(ctx, `
+		SELECT module_id_on
+		FROM app.module_depends
+		WHERE module_id = $1
+	`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	moduleIdsDependsOn := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var moduleIdDependsOn uuid.UUID
+		if err := rows.Scan(&moduleIdDependsOn); err != nil {
+			return nil, err
+		}
+		moduleIdsDependsOn = append(moduleIdsDependsOn, moduleIdDependsOn)
+	}
+	return moduleIdsDependsOn, nil
+}
+
 func getStartForms_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]types.ModuleStartForm, error) {
 
-	startForms := make([]types.ModuleStartForm, 0)
 	rows, err := tx.Query(ctx, `
 		SELECT role_id, form_id
 		FROM app.module_start_form
@@ -364,39 +370,17 @@ func getStartForms_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]types.Mod
 		ORDER BY position ASC
 	`, id)
 	if err != nil {
-		return startForms, err
+		return nil, err
 	}
 	defer rows.Close()
 
+	startForms := make([]types.ModuleStartForm, 0)
 	for rows.Next() {
 		var sf types.ModuleStartForm
 		if err := rows.Scan(&sf.RoleId, &sf.FormId); err != nil {
-			return startForms, err
+			return nil, err
 		}
 		startForms = append(startForms, sf)
 	}
 	return startForms, nil
-}
-
-func getDependsOn_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) ([]uuid.UUID, error) {
-
-	moduleIdsDependsOn := make([]uuid.UUID, 0)
-	rows, err := tx.Query(ctx, `
-		SELECT module_id_on
-		FROM app.module_depends
-		WHERE module_id = $1
-	`, id)
-	if err != nil {
-		return moduleIdsDependsOn, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var moduleIdDependsOn uuid.UUID
-		if err := rows.Scan(&moduleIdDependsOn); err != nil {
-			return moduleIdsDependsOn, err
-		}
-		moduleIdsDependsOn = append(moduleIdsDependsOn, moduleIdDependsOn)
-	}
-	return moduleIdsDependsOn, nil
 }

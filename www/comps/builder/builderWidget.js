@@ -1,10 +1,10 @@
 import MyBuilderCaption         from './builderCaption.js';
 import MyBuilderCollectionInput from './builderCollectionInput.js';
 import MyBuilderFormInput       from './builderFormInput.js';
+import {dialogDeleteAsk}        from '../shared/dialog.js';
 import {copyValueDialog}        from '../shared/generic.js';
-export {MyBuilderWidget as default};
 
-let MyBuilderWidget = {
+export default {
 	name:'my-builder-widget',
 	components:{
 		MyBuilderCaption,
@@ -44,7 +44,7 @@ let MyBuilderWidget = {
 						:caption="capGen.id"
 					/>
 					<my-button image="delete.png"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!readonly"
 						:cancel="true"
 						:caption="capGen.button.delete"
@@ -99,8 +99,8 @@ let MyBuilderWidget = {
 							<td>
 								<my-builder-form-input
 									v-model="values.formId"
-									:module="module"
-									:readonly="readonly"
+									:module
+									:readonly
 									:showOpen="true"
 								/>
 							</td>
@@ -116,8 +116,8 @@ let MyBuilderWidget = {
 									:consumer="values.collection"
 									:fixedCollection="false"
 									:flagsEnable="['noDisplayEmpty','showRowCount']"
-									:module="module"
-									:readonly="readonly"
+									:module
+									:readonly
 									:showOnMobile="true"
 								/>
 							</td>
@@ -174,6 +174,7 @@ let MyBuilderWidget = {
 	methods:{
 		// external
 		copyValueDialog,
+		dialogDeleteAsk,
 		
 		// actions
 		handleHotkeys(e) {
@@ -207,22 +208,8 @@ let MyBuilderWidget = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
-			ws.send('widget','del',{id:this.widgetId},true).then(
+			ws.send('widget','del',this.widgetId,true).then(
 				() => {
 					this.$root.schemaReload(this.module.id);
 					this.$emit('close');

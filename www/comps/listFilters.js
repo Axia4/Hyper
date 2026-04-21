@@ -1,5 +1,5 @@
-import {getColumnIsFilterable} from './shared/column.js';
-import {getQueryFilterNew}     from './shared/query.js';
+import {getColumnIsFilterable}  from './shared/column.js';
+import {getTemplateQueryFilter} from './shared/builderTemplate.js';
 
 export default {
 	name:'my-list-filters',
@@ -8,9 +8,9 @@ export default {
 			<my-filters class="default-inputs"
 				v-model="values"
 				@apply="set"
-				:columns="columns"
-				:columnBatches="columnBatches"
-				:joins="joins"
+				:columns
+				:columnBatches
+				:joins
 			/>
 		</div>
 		<div class="row space-between">
@@ -55,7 +55,7 @@ export default {
 		}
 	},
 	computed:{
-		bracketsEqual:(s) => {
+		bracketsEqual:s => {
 			let cnt0 = 0;
 			let cnt1 = 0;
 			for(const f of s.values) {
@@ -66,16 +66,16 @@ export default {
 		},
 
 		// stores
-		capGen:(s) => s.$store.getters.captions.generic
+		capGen:s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
 		getColumnIsFilterable,
-		getQueryFilterNew,
+		getTemplateQueryFilter,
 
 		// actions
 		add() {
-			let f = this.getQueryFilterNew();
+			let f = this.getTemplateQueryFilter();
 			f.operator = 'ILIKE';
 			
 			// apply first available column

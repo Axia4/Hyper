@@ -119,8 +119,6 @@ export default {
 		language:(s) => {
 			switch(s.settings.languageCode.substring(0,2)) {
 				case 'ar': return 'ar';    break;
-				case 'eu': return 'eu';    break;
-				case 'es': return 'es';    break;
 				case 'en': return 'en';    break;
 				case 'de': return 'de';    break;
 				case 'fr': return 'fr_FR'; break;

@@ -1,8 +1,7 @@
 import MyBuilderCaption     from './builderCaption.js';
 import {getItemTitleColumn} from '../shared/builder.js';
+import {getTemplateColumn}  from '../shared/builderTemplate.js';
 import {getFlexBasis}       from '../shared/form.js';
-import {getRandomInt}       from '../shared/generic.js';
-import {getQueryTemplate}   from '../shared/query.js';
 import {
 	getIndexAttributeId,
 	isAttributeRelationship
@@ -12,7 +11,7 @@ import {
 	getColumnTitleForLang
 } from '../shared/column.js';
 
-export let MyBuilderColumns = {
+export const MyBuilderColumns = {
 	name:'my-builder-columns',
 	components:{MyBuilderCaption},
 	template:`<draggable class="builder-column-batches" handle=".dragBatch" animation="100" itemKey="id"
@@ -21,7 +20,7 @@ export let MyBuilderColumns = {
 	>
 		<!-- computed column batch -->
 		<template #item="{element:batch,index:batchIndex}">
-			<div class="builder-column-batch dragBatch">
+			<div class="builder-column-batch" :class="{ dragBatch:!readonly }">
 				<div class="builder-column-batch-options">
 					<img class="icon move" src="images/column.png" :title="capApp.columnBatch" />
 					
@@ -36,14 +35,16 @@ export let MyBuilderColumns = {
 						:dynamicSize="true"
 						:language="builderLanguage"
 						:modelValue="batch.columns[0].captions.columnTitle"
+						:readonly
 					/>
 					<img class="icon clickable"
-						v-if="hasStyling"
+						v-if="hasStyling && !readonly"
 						@click="toggleVertical(batch.columns[0])"
 						:src="batch.columns[0].styles.includes('vertical') ? 'images/flexColumn.png' : 'images/flexRow.png'"
 						:title="capApp.columnBatchDir"
 					/>
 					<img class="icon clickable" src="images/delete.png"
+						v-if="!readonly"
 						@click="batchRemove(batchIndex)"
 						:title="capGen.button.delete"
 					/>
@@ -57,21 +58,25 @@ export let MyBuilderColumns = {
 					:group="groupColumns"
 				>
 					<template #item="{element:column}">
-				   	 	<div class="builder-field column column-wrap dragAnchor" :class="{ selected:columnIdShow === column.id }">
+				   	 	<div class="builder-field column column-wrap" :class="{ dragAnchor:!readonly, selected:columnIdShow === column.id }">
 							<div class="builder-field-header">
 								<my-button
-									@trigger="$emit('column-id-show',column.id)"
+									@trigger="$emit('column-id-show',column.id,'properties')"
 									:image="getColumnIcon(column)"
 									:naked="true"
 								/>
-								<div class="title word-break"
-									:title="getItemTitleColumn(column,false)"
-								>
+								<my-button image="database.png"
+									v-if="column.subQuery"
+									@trigger="$emit('column-id-show',column.id,'content')"
+									:naked="true"
+								/>
+								<div class="title word-break" :title="getItemTitleColumn(column,false)">
 									{{ getItemTitleColumn(column,false) }}
 								</div>
 								
 								<div class="row centered gap">
 									<div class="clickable"
+										v-if="!readonly"
 										@click="columnSetBy(column.id,'basis',toggleSize(column.basis,25))"
 										@click.prevent.right="columnSetBy(column.id,'basis',toggleSize(column.basis,-25))"
 										:title="capApp.columnSize"
@@ -79,17 +84,17 @@ export let MyBuilderColumns = {
 										<span>{{ getFlexBasis(column.basis) }}</span>
 									</div>
 									<img class="action clickable" src="images/visible0.png"
-										v-if="column.hidden"
+										v-if="column.hidden && !readonly"
 										@click="columnSetBy(column.id,'hidden',false)"
-										:title="capApp.columnShowDefaultOff"
+										:title="capGen.showDefault0"
 									/>
 									<img class="action clickable" src="images/smartphoneOff.png"
-										v-if="!column.hidden && !column.onMobile"
+										v-if="!column.hidden && !column.onMobile && !readonly"
 										@click="columnSetBy(column.id,'onMobile',true)"
-										:title="capApp.columnShowDefaultMobileOff"
+										:title="capGen.showDefaultMobile0"
 									/>
 									<img class="action end clickable" src="images/columnOff.png"
-										v-if="batch.columns.length !== 1"
+										v-if="batch.columns.length !== 1 && !readonly"
 										@click="columnSetBy(column.id,'batch',null)"
 										:title="capApp.columnBatchOff"
 									/>
@@ -109,7 +114,8 @@ export let MyBuilderColumns = {
 		groupName:      { type:String,  required:true },
 		hasBatches:     { type:Boolean, required:false, default:true },
 		hasCaptions:    { type:Boolean, required:true },
-		hasStyling:     { type:Boolean, required:false, default:true } // display/formatting options
+		hasStyling:     { type:Boolean, required:false, default:true }, // display/formatting options
+		readonly:       { type:Boolean, required:true }
 	},
 	emits:['column-id-show','columns-set'],
 	computed:{
@@ -162,11 +168,11 @@ export let MyBuilderColumns = {
 		},
 		
 		// drag groups must be unique or else batches/columns could be moved between separate entities
-		groupBatches:(s) => {
+		groupBatches:s => {
 			let name = `batches_${s.groupName}`;
 			return { name:name, pull:[name], put:[name] };
 		},
-		groupColumns:(s) => {
+		groupColumns:s => {
 			return {
 				name:s.groupName,
 				pull:s.hasBatches ? [s.groupName] : false,
@@ -175,10 +181,10 @@ export let MyBuilderColumns = {
 		},
 		
 		// stores
-		relationIdMap: (s) => s.$store.getters['schema/relationIdMap'],
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		capApp:        (s) => s.$store.getters.captions.builder.form,
-		capGen:        (s) => s.$store.getters.captions.generic
+		relationIdMap: s => s.$store.getters['schema/relationIdMap'],
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		capApp:        s => s.$store.getters.captions.builder.form,
+		capGen:        s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
@@ -189,6 +195,14 @@ export let MyBuilderColumns = {
 		
 		// actions
 		batchRemove(i) {
+			// close column properties
+			for(const c of this.batches[i].columns) {
+				if(c.id === this.columnIdShow) {
+					this.$emit('column-id-show',null,'properties');
+					break;
+				}
+			}
+
 			let batches = JSON.parse(JSON.stringify(this.batches));
 			batches.splice(i,1);
 			this.batches = batches;
@@ -213,17 +227,18 @@ export let MyBuilderColumns = {
 	}
 };
 
-export let MyBuilderColumnTemplates = {
+export const MyBuilderColumnTemplates = {
 	name:'my-builder-column-templates',
 	template:`<draggable class="builder-column-batches template" handle=".dragAnchor" animation="100" itemKey="id"
 		v-model="batches"
 		:group="groupName"
 	>
 		<template #item="{element:b}">
-			<div class="builder-column-batch dragAnchor">
+			<div class="builder-column-batch" :class="{ dragAnchor:!readonly }">
 				
 				<div v-for="c in b.columns" class="builder-column-batch-options">
 					<img class="icon clickable" src="images/add.png"
+						v-if="!readonly"
 						@click="$emit('column-add',c)"
 						:title="capGen.button.add"
 					/>
@@ -243,7 +258,8 @@ export let MyBuilderColumnTemplates = {
 		allowRelationships:{ type:Boolean, required:false, default:false },
 		columns:           { type:Array,   required:true },
 		groupName:         { type:String,  required:true },
-		joins:             { type:Array,   required:true }
+		joins:             { type:Array,   required:true },
+		readonly:          { type:Boolean, required:true }
 	},
 	emits:['column-add'],
 	computed:{
@@ -263,7 +279,7 @@ export let MyBuilderColumnTemplates = {
 						
 						out.push({
 							batch:null,
-							columns:[this.createColumn(join.index,atr.id,false)],
+							columns:[this.getTemplateColumn(atr.id,join.index,false)],
 							vertical:false
 						});
 					}
@@ -272,10 +288,9 @@ export let MyBuilderColumnTemplates = {
 				// add sub query column
 				out.push({
 					batch:null,
-					columns:[this.createColumn(0,null,true)],
+					columns:[this.getTemplateColumn(null,0,true)],
 					vertical:false
 				});
-				
 				return out;
 			},
 			set() {}
@@ -298,35 +313,7 @@ export let MyBuilderColumnTemplates = {
 		getColumnIcon,
 		getIndexAttributeId,
 		getItemTitleColumn,
-		getQueryTemplate,
-		getRandomInt,
-		isAttributeRelationship,
-		
-		createColumn(index,attributeId,subQuery) {
-			let id = !subQuery
-				? 'new_'+this.getIndexAttributeId(index,attributeId,false,null)
-				: 'new_sub_query' + this.getRandomInt(1,99999);
-			
-			return {
-				id:id,
-				attributeId:attributeId,
-				index:index,
-				batch:null,
-				basis:0,
-				length:0,
-				display:'default',
-				groupBy:false,
-				aggregator:null,
-				distincted:false,
-				subQuery:subQuery,
-				query:this.getQueryTemplate(),
-				hidden:false,
-				onMobile:true,
-				styles:['wrap'],
-				captions:{
-					columnTitle:{}
-				}
-			};
-		}
+		getTemplateColumn,
+		isAttributeRelationship
 	}
 };

@@ -1,8 +1,10 @@
-import {dialogCloseAsk} from '../shared/dialog.js';
 import MyInputColorWrap from '../inputColorWrap.js';
-export {MyAdminLoginTemplate as default};
+import {
+	dialogCloseAsk,
+	dialogDeleteAsk
+} from '../shared/dialog.js';
 
-let MyAdminLoginTemplate = {
+export default {
 	name:'my-admin-login-template',
 	components:{ MyInputColorWrap },
 	template:`<div class="app-sub-window under-header at-top with-margin" @mousedown.self="closeAsk">
@@ -42,7 +44,7 @@ let MyAdminLoginTemplate = {
 				<div class="area">
 					<my-button image="delete.png"
 						v-if="!isNew && !isGlobal"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:cancel="true"
 						:caption="capGen.button.delete"
 					/>
@@ -103,27 +105,27 @@ let MyAdminLoginTemplate = {
 							<td colspan="2"><b>{{ capAppSet.titleSubNumbers }}</b></td>
 						</tr>
 						<tr class="default-inputs">
-							<td>{{ capAppSet.numberSepThousand }}</td>
+							<td>{{ capGen.numberSepThousand }}</td>
 							<td>
 								<select v-model="settings.numberSepThousand">
-									<option value=".">{{ capAppSet.option.numberSeparator.dot }}</option>
-									<option value=",">{{ capAppSet.option.numberSeparator.comma }}</option>
-									<option value="'">{{ capAppSet.option.numberSeparator.apos }}</option>
-									<option value="·">{{ capAppSet.option.numberSeparator.mdot }}</option>
-									<option value=" ">{{ capAppSet.option.numberSeparator.space }}</option>
-									<option value="0">{{ capAppSet.option.numberSeparator.none }}</option>
+									<option value=".">{{ capGen.option.numberSeparator.dot }}</option>
+									<option value=",">{{ capGen.option.numberSeparator.comma }}</option>
+									<option value="'">{{ capGen.option.numberSeparator.apos }}</option>
+									<option value="·">{{ capGen.option.numberSeparator.mdot }}</option>
+									<option value=" ">{{ capGen.option.numberSeparator.space }}</option>
+									<option value="0">{{ capGen.option.numberSeparator.none }}</option>
 								</select>
 							</td>
 						</tr>
 						<tr class="default-inputs">
-							<td>{{ capAppSet.numberSepDecimal }}</td>
+							<td>{{ capGen.numberSepDecimal }}</td>
 							<td>
 								<select v-model="settings.numberSepDecimal">
-									<option value=".">{{ capAppSet.option.numberSeparator.dot }}</option>
-									<option value=",">{{ capAppSet.option.numberSeparator.comma }}</option>
-									<option value="'">{{ capAppSet.option.numberSeparator.apos }}</option>
-									<option value="·">{{ capAppSet.option.numberSeparator.mdot }}</option>
-									<option value=" ">{{ capAppSet.option.numberSeparator.space }}</option>
+									<option value=".">{{ capGen.option.numberSeparator.dot }}</option>
+									<option value=",">{{ capGen.option.numberSeparator.comma }}</option>
+									<option value="'">{{ capGen.option.numberSeparator.apos }}</option>
+									<option value="·">{{ capGen.option.numberSeparator.mdot }}</option>
+									<option value=" ">{{ capGen.option.numberSeparator.space }}</option>
 								</select>
 							</td>
 						</tr>
@@ -380,6 +382,7 @@ let MyAdminLoginTemplate = {
 	methods:{
 		// externals
 		dialogCloseAsk,
+		dialogDeleteAsk,
 
 		handleHotkeys(e) {
 			if(e.ctrlKey && e.key === 's') {
@@ -409,22 +412,6 @@ let MyAdminLoginTemplate = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png',
-					keyEnter:true
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png',
-					keyEscape:true
-				}]
-			});
-		},
 		del() {
 			ws.send('loginTemplate','del',{id:this.id},true).then(
 				() => this.$emit('close'), this.$root.genericError

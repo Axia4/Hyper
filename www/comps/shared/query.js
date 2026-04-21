@@ -25,15 +25,16 @@ let getQueryExpressionAttribute = function(column) {
 };
 
 // map of joins keyed by relation index
-export function getJoinIndexMap(joins) {
+export function getJoinsIndexMap(joins) {
 	let map = {};
 	for(const j of joins) {
 		map[j.index] = j;
 	}
 	return map;
 };
-export function getJoinIndexMapExpanded(joins,indexMapRecordId,indexesNoDel,indexesNoSet,dataOptions) {
+export function getJoinsIndexMapExpanded(joins,indexMapRecordId,indexesNoDel,indexesNoSet,dataOptions) {
 	let map = {};
+	joins = JSON.parse(JSON.stringify(joins));
 	for(let j of joins) {
 		const recordId = indexMapRecordId[j.index];
 		j.recordId     = Number.isInteger(recordId) ? recordId : 0;
@@ -125,7 +126,7 @@ export function getQueryExpressionsDateRange(attributeId0,index0,attributeId1,in
 export function getNestedIndexAttributeIdsByJoins(joins,nestingLevel,inclEncrypted) {
 	let out = [];
 	for(const join of joins) {
-		let r = MyStore.getters['schema/relationIdMap'][join.relationId];
+		const r = MyStore.getters['schema/relationIdMap'][join.relationId];
 		
 		for(const atr of r.attributes) {
 			if(!atr.encrypted || inclEncrypted)
@@ -136,7 +137,7 @@ export function getNestedIndexAttributeIdsByJoins(joins,nestingLevel,inclEncrypt
 };
 
 export function getCaptionByIndexAttributeId(indexAttributeId) {
-	let v = indexAttributeId.split('_');
+	const v = indexAttributeId.split('_');
 	return getItemTitle(v[1],v[0],false,null);
 };
 
@@ -175,13 +176,15 @@ export function getQueryFiltersProcessed(filters,joinsIndexMap,globalSearch,glob
 					collectionIdMapIndexFilter[s.collectionId]);
 			break;
 			case 'subQuery':
-				s.query.expressions = getSubQueryFilterExpressions(s);
-				s.query.filters     = getQueryFiltersProcessed(
-					s.query.filters,joinsIndexMap,globalSearch,globalSearchDict,dataFieldIdMap,
-					fieldIdsChanged,fieldIdsInvalid,fieldValues,recordMayCreate,recordMayDelete,
-					recordMayUpdate,collectionIdMapIndexFilter,variableIdMapLocal
-				);
-				s.query.limit = s.query.fixedLimit;
+				if(s.query !== null) {
+					s.query.expressions = getSubQueryFilterExpressions(s);
+					s.query.filters     = getQueryFiltersProcessed(
+						s.query.filters,joinsIndexMap,globalSearch,globalSearchDict,dataFieldIdMap,
+						fieldIdsChanged,fieldIdsInvalid,fieldValues,recordMayCreate,recordMayDelete,
+						recordMayUpdate,collectionIdMapIndexFilter,variableIdMapLocal
+					);
+					s.query.limit = s.query.fixedLimit;
+				}
 			break;
 			case 'true':     s.value = true; break;
 			case 'variable': s.value = variableValueGet(s.variableId,variableIdMapLocal); break;
@@ -231,10 +234,12 @@ export function getQueryFiltersProcessed(filters,joinsIndexMap,globalSearch,glob
 			delete(s.query);
 			delete(s.queryAggregator);
 		} else {
-			delete(s.query.choices);
-			delete(s.query.fixedLimit);
-			delete(s.query.id);
-			delete(s.query.lookups);
+			if(s.query !== null) {
+				delete(s.query.choices);
+				delete(s.query.fixedLimit);
+				delete(s.query.id);
+				delete(s.query.lookups);
+			}
 		}
 		delete(s.collectionId);
 		delete(s.columnId);
@@ -286,57 +291,6 @@ export function getQueryAttributesPkFilter(relationId,recordIds,index,not) {
 		side1:{
 			brackets:0,
 			value:recordIds
-		}
-	};
-};
-
-export function getQueryTemplate() {
-	return {
-		id:'00000000-0000-0000-0000-000000000000',
-		relationId:null,fixedLimit:0,joins:[],filters:[],orders:[],lookups:[],choices:[]
-	};
-};
-
-export function getQueryTemplateIfNull(query) {
-	return query === null ? getQueryTemplate() : query;
-};
-
-export function getQueryFilterNew() {
-	return {
-		connector:'AND',
-		operator:'=',
-		index:0,
-		side0:{
-			attributeId:null,
-			attributeIndex:0,
-			attributeNested:0,
-			brackets:0,
-			collectionId:null,
-			columnId:null,
-			content:'attribute',
-			fieldId:null,
-			ftsDict:null,
-			query:null,
-			queryAggregator:null,
-			presetId:null,
-			roleId:null,
-			value:''
-		},
-		side1:{
-			attributeId:null,
-			attributeIndex:0,
-			attributeNested:0,
-			brackets:0,
-			collectionId:null,
-			columnId:null,
-			content:'value',
-			fieldId:null,
-			ftsDict:null,
-			query:null,
-			queryAggregator:null,
-			presetId:null,
-			roleId:null,
-			value:''
 		}
 	};
 };

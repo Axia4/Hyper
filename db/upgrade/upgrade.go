@@ -101,6 +101,936 @@ var upgradeFunctions = map[string]func(ctx context.Context, tx pgx.Tx) (string, 
 			TYPE app.field_flag[] USING flags::CHARACTER VARYING(12)[]::app.field_flag[];
 	*/
 
+	"4.1": func(ctx context.Context, tx pgx.Tx) (string, error) {
+		_, err := tx.Exec(ctx, `
+			-- cleanup from last release
+			ALTER TABLE instance.oauth_client ALTER COLUMN flow
+				TYPE instance.oauth_client_flow USING flow::TEXT::instance.oauth_client_flow;
+
+			ALTER TABLE app.field ALTER COLUMN flags
+				TYPE app.field_flag[] USING flags::CHARACTER VARYING(12)[]::app.field_flag[];
+
+			-- new log context
+			INSERT INTO instance.config (name,value) VALUES ('logDoc',2);
+			ALTER TYPE instance.log_context ADD VALUE 'doc';
+			
+			-- document entity
+			CREATE TYPE app.font_family AS ENUM(
+				'Arimo','ComicNeue','CourierPrime','Cousine','NotoSans','NotoSansArabic',
+				'NotoSansJP','NotoSansKR','NotoSansSC','NotoSansThai','OpenSans','Roboto','Tinos'
+			);
+			CREATE TYPE app.page_orientation  AS ENUM('landscape','portrait');
+			CREATE TYPE app.page_size         AS ENUM('A1','A2','A3','A4','A5','A6','A7','Letter','Legal');
+			CREATE TYPE app.doc_place_context AS ENUM('default','body','footer','header');
+			CREATE TYPE app.doc_field_content AS ENUM('data','flow','flowBody','grid','gridFooter','gridHeader','list','text');
+			CREATE TYPE app.border_style_cap  AS ENUM('butt','round','square');
+			CREATE TYPE app.border_style_join AS ENUM('bevel','miter','round');
+			CREATE TYPE app.doc_set_target    AS ENUM(
+				'author','filename','language','title',
+				'border.color','border.draw','border.size',
+				'bodyBorder.cell',  'bodyBorder.color',  'bodyBorder.draw',  'bodyBorder.size',  
+				'footerBorder.cell','footerBorder.color','footerBorder.draw','footerBorder.size',
+				'headerBorder.cell','headerBorder.color','headerBorder.draw','headerBorder.size',
+				'bodyRow.colorFillEven','bodyRow.colorFillOdd','footerRow.colorFill','headerRow.colorFill',
+				'headerRow.repeat','headerRow.show','font.align','font.color','font.dateFormat',
+				'font.family','font.lineFactor','font.numberSepDec','font.numberSepTho','font.size',
+				'font.style','text.length','text.postfix','text.prefix'
+			);
+
+			ALTER TYPE app.caption_content ADD VALUE 'docTitle';
+			ALTER TYPE app.caption_content ADD VALUE 'docColumnTitle';
+			ALTER TYPE app.caption_content ADD VALUE 'docFieldText';
+
+			CREATE TABLE IF NOT EXISTS app.doc (
+				id uuid NOT NULL,
+				module_id uuid NOT NULL,
+				name character varying(64) COLLATE pg_catalog."default" NOT NULL,
+				comment text COLLATE pg_catalog."default",
+				filename character varying(64) COLLATE pg_catalog."default" NOT NULL,
+				author character varying(128),
+				language character(5) NOT NULL,
+				CONSTRAINT doc_pkey PRIMARY KEY (id),
+				CONSTRAINT doc_name_key UNIQUE (module_id, name)
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_module_id_fkey FOREIGN KEY (module_id)
+					REFERENCES app.module (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_module_fkey ON app.doc USING btree (module_id ASC NULLS LAST);
+			
+			CREATE TABLE IF NOT EXISTS app.doc_font (
+				doc_id uuid NOT NULL,
+				align character(2) NOT NULL,
+				bool_false character varying(32) NOT NULL,
+				bool_true character varying(32) NOT NULL,
+				color character(6),
+				date_format character(5) NOT NULL,
+				family app.font_family NOT NULL,
+				line_factor real NOT NULL,
+				number_sep_dec character(1) NOT NULL,
+				number_sep_tho character(1) NOT NULL,
+				size real NOT NULL,
+				style character varying(4),
+				CONSTRAINT doc_font_pkey PRIMARY KEY (doc_id),
+				CONSTRAINT doc_font_doc_id_fkey FOREIGN KEY (doc_id)
+					REFERENCES app.doc (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_font_doc_fkey ON app.doc_font USING btree (doc_id ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_page (
+				id uuid NOT NULL,
+				doc_id uuid NOT NULL,
+				doc_page_id_footer_inherit uuid,
+				doc_page_id_header_inherit uuid,
+				"position" smallint NOT NULL,
+				size app.page_size NOT NULL,
+				orientation app.page_orientation NOT NULL,
+				margins real[] NOT NULL,
+				state boolean NOT NULL,
+				CONSTRAINT doc_page_pkey PRIMARY KEY (id),
+				CONSTRAINT doc_page_doc_id_fkey FOREIGN KEY (doc_id)
+					REFERENCES app.doc (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_page_doc_page_id_footer_inherit_fkey FOREIGN KEY (doc_page_id_footer_inherit)
+					REFERENCES app.doc_page (id) MATCH SIMPLE
+					ON UPDATE SET NULL
+					ON DELETE SET NULL
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_page_doc_page_id_header_inherit_fkey FOREIGN KEY (doc_page_id_header_inherit)
+					REFERENCES app.doc_page (id) MATCH SIMPLE
+					ON UPDATE SET NULL
+					ON DELETE SET NULL
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_page_doc_fkey                     ON app.doc_page USING btree (doc_id                     ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_page_doc_page_footer_inherit_fkey ON app.doc_page USING btree (doc_page_id_footer_inherit ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_page_doc_page_header_inherit_fkey ON app.doc_page USING btree (doc_page_id_header_inherit ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_field (
+				id uuid NOT NULL,
+				parent_id uuid,
+				doc_page_id uuid NOT NULL,
+				content app.doc_field_content NOT NULL,
+				pos_x real,
+				pos_y real,
+				size_x real,
+				size_y real,
+				state boolean NOT NULL,
+				"position" smallint NOT NULL,
+				CONSTRAINT doc_field_pkey PRIMARY KEY (id),
+				CONSTRAINT doc_field_doc_page_id_fkey FOREIGN KEY (doc_page_id)
+					REFERENCES app.doc_page (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_field_parent_id_fkey FOREIGN KEY (parent_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_field_doc_page_fkey ON app.doc_field USING btree (doc_page_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_field_parent_fkey   ON app.doc_field USING btree (parent_id   ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_field_content       ON app.doc_field USING btree (content     ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_field_data (
+				doc_field_id uuid NOT NULL,
+				attribute_id uuid NOT NULL,
+				attribute_index integer NOT NULL,
+				length integer NOT NULL,
+				text_postfix text NOT NULL,
+				text_prefix text NOT NULL,
+				CONSTRAINT doc_field_data_pkey PRIMARY KEY (doc_field_id),
+				CONSTRAINT doc_field_data_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_field_data_attribute_id_fkey FOREIGN KEY (attribute_id)
+					REFERENCES app.attribute (id) MATCH SIMPLE
+					ON UPDATE NO ACTION
+					ON DELETE NO ACTION
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_field_data_attribute_fkey ON app.doc_field_data USING btree (attribute_id ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_field_flow (
+				doc_field_id uuid NOT NULL,
+				direction app.field_container_direction NOT NULL,
+				gap real NOT NULL,
+				paddings real[],
+				shrink_y boolean NOT NULL,
+				CONSTRAINT doc_field_flow_pkey PRIMARY KEY (doc_field_id),
+				CONSTRAINT doc_field_flow_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+
+			CREATE TABLE IF NOT EXISTS app.doc_field_grid (
+				doc_field_id uuid NOT NULL,
+				shrink_y boolean NOT NULL,
+				size_snap real NOT NULL,
+				CONSTRAINT doc_field_grid_pkey PRIMARY KEY (doc_field_id),
+				CONSTRAINT doc_field_grid_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+
+			CREATE TABLE IF NOT EXISTS app.doc_field_list (
+				doc_field_id uuid NOT NULL,
+				body_row_color_fill_even character(6),
+				body_row_color_fill_odd character(6),
+				body_row_size_y real NOT NULL,
+				footer_row_color_fill character(6),
+				header_row_color_fill character(6),
+				header_row_repeat boolean NOT NULL,
+				header_row_show boolean NOT NULL,
+				paddings real[] NOT NULL,
+				CONSTRAINT doc_field_list_pkey PRIMARY KEY (doc_field_id),
+				CONSTRAINT doc_field_list_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+
+			CREATE TABLE IF NOT EXISTS app.doc_column(
+				id uuid NOT NULL,
+				doc_field_id uuid NOT NULL,
+				attribute_id uuid NOT NULL,
+				attribute_index smallint NOT NULL,
+				aggregator app.aggregator,
+				aggregator_row app.aggregator,
+				length smallint NOT NULL,
+				"position" smallint NOT NULL,
+				distincted boolean NOT NULL,
+				group_by boolean NOT NULL,
+				size_x real NOT NULL,
+				sub_query boolean NOT NULL,
+				text_postfix TEXT NOT NULL,
+				text_prefix TEXT NOT NULL,
+				CONSTRAINT doc_column_pkey PRIMARY KEY (id),
+				CONSTRAINT doc_column_attribute_id_fkey FOREIGN KEY (attribute_id)
+					REFERENCES app.attribute (id) MATCH SIMPLE
+					ON UPDATE NO ACTION
+					ON DELETE NO ACTION
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_column_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_column_doc_field_id_fkey ON app.doc_column USING btree (doc_field_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_column_attribute_id_fkey ON app.doc_column USING btree (attribute_id ASC NULLS LAST);
+			
+			CREATE TABLE IF NOT EXISTS app.doc_border (
+				doc_field_id uuid,
+				context app.doc_place_context NOT NULL,
+				cell boolean NOT NULL,
+				color character(6),
+				draw character varying(4) NOT NULL,
+				size real NOT NULL,
+				style_cap app.border_style_cap NOT NULL,
+				style_join app.border_style_join NOT NULL,
+				CONSTRAINT doc_border_pkey PRIMARY KEY (doc_field_id, context),
+				CONSTRAINT doc_border_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_border_doc_field_id_fkey ON app.doc_border USING btree (doc_field_id ASC NULLS LAST);
+			
+			CREATE TABLE IF NOT EXISTS app.doc_set (
+				doc_id uuid,
+				doc_column_id uuid,
+				doc_field_id uuid,
+				doc_page_id uuid,
+				context app.doc_place_context NOT NULL,
+				attribute_id uuid,
+				attribute_index smallint,
+				target app.doc_set_target NOT NULL,
+				value jsonb,
+				CONSTRAINT doc_set_attribute_id_fkey FOREIGN KEY (attribute_id)
+					REFERENCES app.attribute (id) MATCH SIMPLE
+					ON UPDATE NO ACTION
+					ON DELETE NO ACTION
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_set_doc_id_fkey FOREIGN KEY (doc_id)
+					REFERENCES app.doc (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_set_doc_column_id_fkey FOREIGN KEY (doc_column_id)
+					REFERENCES app.doc_column (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_set_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_set_doc_page_id_fkey FOREIGN KEY (doc_page_id)
+					REFERENCES app.doc_page (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE        INDEX IF NOT EXISTS fki_doc_set_attribute_id_fkey ON app.doc_set USING btree (attribute_id  ASC NULLS LAST);
+			CREATE UNIQUE INDEX IF NOT EXISTS ind_doc_set_doc_unique        ON app.doc_set USING btree (doc_id        ASC NULLS LAST, context ASC NULLS LAST, target ASC NULLS LAST);
+			CREATE UNIQUE INDEX IF NOT EXISTS ind_doc_set_doc_column_unique ON app.doc_set USING btree (doc_column_id ASC NULLS LAST, context ASC NULLS LAST, target ASC NULLS LAST);
+			CREATE UNIQUE INDEX IF NOT EXISTS ind_doc_set_doc_field_unique  ON app.doc_set USING btree (doc_field_id  ASC NULLS LAST, context ASC NULLS LAST, target ASC NULLS LAST);
+			CREATE UNIQUE INDEX IF NOT EXISTS ind_doc_set_doc_page_unique   ON app.doc_set USING btree (doc_page_id   ASC NULLS LAST, context ASC NULLS LAST, target ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_state(
+				id uuid NOT NULL,
+				doc_id uuid NOT NULL,
+				description text COLLATE pg_catalog."default" NOT NULL,
+				CONSTRAINT doc_state_pkey PRIMARY KEY (id),
+				CONSTRAINT doc_state_doc_id_fkey FOREIGN KEY (doc_id)
+					REFERENCES app.doc (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_doc_id_fkey ON app.doc_state USING btree (doc_id ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_state_condition(
+				doc_state_id uuid NOT NULL,
+				"position" smallint NOT NULL,
+				connector app.condition_connector NOT NULL,
+				operator app.condition_operator NOT NULL,
+				CONSTRAINT doc_state_condition_pkey PRIMARY KEY (doc_state_id, "position"),
+				CONSTRAINT doc_state_condition_doc_state_id_fkey FOREIGN KEY (doc_state_id)
+					REFERENCES app.doc_state (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_condition_doc_state_id_fkey ON app.doc_state_condition USING btree (doc_state_id ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_state_condition_side(
+				doc_state_id uuid NOT NULL,
+				doc_state_condition_position smallint NOT NULL,
+				attribute_id uuid,
+				attribute_index smallint,
+				preset_id uuid,
+				side smallint NOT NULL,
+				brackets smallint NOT NULL,
+				content app.filter_side_content NOT NULL,
+				value text COLLATE pg_catalog."default",
+				CONSTRAINT doc_state_condition_side_pkey PRIMARY KEY (doc_state_id, doc_state_condition_position, side),
+				CONSTRAINT doc_state_condition_side_doc_state_id_fkey FOREIGN KEY (doc_state_id)
+					REFERENCES app.doc_state (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_state_condition_side_doc_state_id_doc_state_con_pos_fkey FOREIGN KEY (doc_state_condition_position, doc_state_id)
+					REFERENCES app.doc_state_condition ("position", doc_state_id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_state_condition_side_attribute_id_fkey FOREIGN KEY (attribute_id)
+					REFERENCES app.attribute (id) MATCH SIMPLE
+					ON UPDATE NO ACTION
+					ON DELETE NO ACTION
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_state_condition_side_preset_id_fkey FOREIGN KEY (preset_id)
+					REFERENCES app.preset (id) MATCH SIMPLE
+					ON UPDATE NO ACTION
+					ON DELETE NO ACTION
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_condition_side_doc_state_id_fkey ON app.doc_state_condition_side USING btree (doc_state_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_condition_side_attribute_id_fkey ON app.doc_state_condition_side USING btree (attribute_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_condition_side_preset_id_fkey    ON app.doc_state_condition_side USING btree (preset_id    ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.doc_state_effect(
+				doc_state_id uuid NOT NULL,
+				doc_field_id uuid,
+				doc_page_id uuid,
+				new_state bool NOT NULL,
+				CONSTRAINT doc_state_effect_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+					REFERENCES app.doc_field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_state_effect_doc_state_id_fkey FOREIGN KEY (doc_state_id)
+					REFERENCES app.doc_state (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_state_effect_doc_page_id_fkey FOREIGN KEY (doc_page_id)
+					REFERENCES app.doc_page (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_effect_doc_field_id_fkey ON app.doc_state_effect USING btree (doc_field_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_effect_doc_state_id_fkey ON app.doc_state_effect USING btree (doc_state_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_state_effect_doc_page_id_fkey  ON app.doc_state_effect USING btree (doc_page_id ASC NULLS LAST);
+			
+			ALTER TABLE app.caption ADD COLUMN     doc_id uuid;
+			ALTER TABLE app.caption ADD COLUMN     doc_column_id uuid;
+			ALTER TABLE app.caption ADD COLUMN     doc_field_id uuid;
+			ALTER TABLE app.caption ADD CONSTRAINT caption_doc_id_fkey        FOREIGN KEY (doc_id)
+				REFERENCES app.doc (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE app.caption ADD CONSTRAINT caption_doc_column_id_fkey FOREIGN KEY (doc_column_id)
+				REFERENCES app.doc_column (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE app.caption ADD CONSTRAINT caption_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+				REFERENCES app.doc_field (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			
+			CREATE INDEX fki_caption_doc_id_fkey        ON app.caption USING BTREE (doc_id        ASC NULLS LAST);
+			CREATE INDEX fki_caption_doc_column_id_fkey ON app.caption USING BTREE (doc_column_id ASC NULLS LAST);
+			CREATE INDEX fki_caption_doc_field_id_fkey  ON app.caption USING BTREE (doc_field_id  ASC NULLS LAST);
+			
+			ALTER TABLE instance.caption ADD COLUMN doc_id uuid;
+			ALTER TABLE instance.caption ADD COLUMN doc_column_id uuid;
+			ALTER TABLE instance.caption ADD COLUMN doc_field_id uuid;
+			ALTER TABLE instance.caption ADD CONSTRAINT caption_doc_id_fkey        FOREIGN KEY (doc_id)
+				REFERENCES app.doc (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE instance.caption ADD CONSTRAINT caption_doc_column_id_fkey FOREIGN KEY (doc_column_id)
+				REFERENCES app.doc_column (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE instance.caption ADD CONSTRAINT caption_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+				REFERENCES app.doc_field (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			
+			CREATE INDEX fki_caption_doc_id_fkey        ON instance.caption USING BTREE (doc_id ASC        NULLS LAST);
+			CREATE INDEX fki_caption_doc_column_id_fkey ON instance.caption USING BTREE (doc_column_id ASC NULLS LAST);
+			CREATE INDEX fki_caption_doc_field_id_fkey  ON instance.caption USING BTREE (doc_field_id ASC  NULLS LAST);
+			
+			ALTER TABLE app.query ADD COLUMN     doc_id        uuid;
+			ALTER TABLE app.query ADD COLUMN     doc_column_id uuid;
+			ALTER TABLE app.query ADD COLUMN     doc_field_id  uuid;
+			ALTER TABLE app.query ADD CONSTRAINT query_doc_id_fkey FOREIGN KEY (doc_id)
+				REFERENCES app.doc (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+			    ON DELETE CASCADE
+			    DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE app.query ADD CONSTRAINT query_doc_column_id_fkey FOREIGN KEY (doc_column_id)
+				REFERENCES app.doc_column (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+			    ON DELETE CASCADE
+			    DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE app.query ADD CONSTRAINT query_doc_field_id_fkey FOREIGN KEY (doc_field_id)
+				REFERENCES app.doc_field (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+			    ON DELETE CASCADE
+			    DEFERRABLE INITIALLY DEFERRED;
+			
+			CREATE INDEX IF NOT EXISTS fki_query_doc_id_fkey        ON app.query USING btree (doc_id        ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_query_doc_field_id_fkey  ON app.query USING btree (doc_field_id  ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_query_doc_column_id_fkey ON app.query USING btree (doc_column_id ASC NULLS LAST);
+			
+			ALTER TABLE app.query DROP CONSTRAINT query_single_parent;
+			ALTER TABLE app.query ADD  CONSTRAINT query_single_parent CHECK (1 = (
+				CASE WHEN api_id                IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN collection_id         IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN column_id             IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN doc_id                IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN doc_column_id         IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN doc_field_id          IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN field_id              IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN form_id               IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN query_filter_query_id IS NULL THEN 0 ELSE 1 END +
+				CASE WHEN search_bar_id         IS NULL THEN 0 ELSE 1
+				END
+			));
+
+			-- open doc action for button fields and form actions
+			CREATE TABLE IF NOT EXISTS app.open_doc (
+				field_id uuid,
+				field_id_add_to uuid,
+				form_action_id uuid,
+				doc_id_open uuid NOT NULL,
+				relation_index_open int NOT NULL,
+				CONSTRAINT open_doc_field_id_fkey FOREIGN KEY (field_id)
+					REFERENCES app.field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT open_doc_form_action_id_fkey FOREIGN KEY (form_action_id)
+					REFERENCES app.form_action (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT open_doc_doc_id_open_fkey FOREIGN KEY (doc_id_open)
+					REFERENCES app.doc (id) MATCH SIMPLE
+					ON UPDATE NO ACTION
+					ON DELETE NO ACTION
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT open_doc_field_id_add_to_fkey FOREIGN KEY (field_id_add_to)
+					REFERENCES app.field (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+
+			CREATE INDEX IF NOT EXISTS fki_open_doc_doc_id_open_fkey     ON app.open_doc USING btree (doc_id_open     ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_open_doc_field_id_fkey        ON app.open_doc USING btree (field_id        ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_open_doc_field_id_add_to_fkey ON app.open_doc USING btree (field_id_add_to ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_open_doc_form_action_id_fkey  ON app.open_doc USING btree (form_action_id  ASC NULLS LAST);
+
+			-- open form action for form actions
+			ALTER TABLE app.open_form ADD COLUMN form_action_id uuid;
+			ALTER TABLE app.open_form ADD CONSTRAINT open_form_form_action_id_fkey FOREIGN KEY (form_action_id)
+				REFERENCES app.form_action (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			
+			CREATE INDEX IF NOT EXISTS fki_open_form_form_action_id_fkey ON app.open_form USING btree (form_action_id ASC NULLS LAST);
+
+			-- make JS function optional for form actions
+			ALTER TABLE app.form_action ALTER COLUMN js_function_id DROP NOT NULL;
+
+			-- document generation spooler
+			CREATE TABLE IF NOT EXISTS instance.doc_spool (
+				id uuid NOT NULL DEFAULT gen_random_uuid(),
+				doc_id uuid NOT NULL,
+				attribute_id_attach uuid,
+				pg_function_id_callback uuid,
+				callback_value text COLLATE pg_catalog."default",
+				record_id_attach bigint,
+				record_id_load bigint,
+				file_path text,
+				overwrite boolean DEFAULT FALSE,
+				CONSTRAINT doc_spool_pkey PRIMARY KEY (id),
+				CONSTRAINT doc_spool_doc_id_fkey FOREIGN KEY (doc_id)
+					REFERENCES app.doc (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_spool_attribute_id_attach_fkey FOREIGN KEY (attribute_id_attach)
+					REFERENCES app.attribute (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT doc_spool_pg_function_id_callback_fkey FOREIGN KEY (pg_function_id_callback)
+					REFERENCES app.pg_function (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_doc_spool_doc_id_fkey                  ON instance.doc_spool USING btree (doc_id                  ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_spool_pg_function_id_callback_fkey ON instance.doc_spool USING btree (pg_function_id_callback ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_doc_spool_attribute_id_attach_fkey     ON instance.doc_spool USING btree (attribute_id_attach     ASC NULLS LAST);
+
+			INSERT INTO instance.task (name,interval_seconds,cluster_master_only,embedded_only,active_only,active)
+			VALUES ('docsGenerate',15,true,false,false,true);
+			
+			INSERT INTO instance.schedule (task_name,date_attempt,date_success)
+			VALUES ('docsGenerate',0,0);
+
+			-- document generation instance functions
+			CREATE OR REPLACE FUNCTION instance.pdf_create_attach(
+				doc_id uuid,
+				record_id_load bigint,
+				record_id_attach bigint,
+				attribute_id_attach uuid,
+				pg_function_id_callback uuid DEFAULT NULL,
+				callback_value text DEFAULT NULL)
+				RETURNS void
+				LANGUAGE 'plpgsql'
+				COST 100
+				VOLATILE PARALLEL UNSAFE
+			AS $BODY$
+			DECLARE
+			BEGIN
+				INSERT INTO instance.doc_spool (
+					doc_id, attribute_id_attach, pg_function_id_callback,
+					callback_value, record_id_load, record_id_attach
+				)
+				VALUES(
+					doc_id, attribute_id_attach, pg_function_id_callback,
+					callback_value, record_id_load, record_id_attach
+				);
+			END;
+			$BODY$;
+
+			CREATE OR REPLACE FUNCTION instance.pdf_create_export(
+				doc_id uuid,
+				record_id_load bigint,
+				file_path text,
+				overwrite boolean DEFAULT FALSE,
+				pg_function_id_callback uuid DEFAULT NULL,
+				callback_value text DEFAULT NULL)
+				RETURNS void
+				LANGUAGE 'plpgsql'
+				COST 100
+				VOLATILE PARALLEL UNSAFE
+			AS $BODY$
+			DECLARE
+			BEGIN
+				INSERT INTO instance.doc_spool (
+					doc_id, pg_function_id_callback, callback_value,
+					record_id_load, file_path, overwrite
+				)
+				VALUES(
+					doc_id, pg_function_id_callback, callback_value,
+					record_id_load, file_path, overwrite
+				);
+			END;
+			$BODY$;
+
+			-- repository changes
+			CREATE TABLE IF NOT EXISTS instance.repo(
+				id uuid NOT NULL DEFAULT gen_random_uuid(),
+				name text COLLATE pg_catalog."default" NOT NULL,
+				url text COLLATE pg_catalog."default" NOT NULL,
+				fetch_user_name character varying(256) COLLATE pg_catalog."default" NOT NULL,
+				fetch_user_pass character varying(5120) COLLATE pg_catalog."default" NOT NULL,
+				skip_verify boolean NOT NULL,
+				feedback_enable boolean NOT NULL,
+				date_checked bigint NOT NULL,
+				active bool NOT NULL,
+				CONSTRAINT repo_pkey PRIMARY KEY (id)
+			);
+
+			INSERT INTO instance.repo(name,url,fetch_user_name,fetch_user_pass,skip_verify,feedback_enable,date_checked,active)
+			VALUES (
+				CASE (SELECT value FROM instance.config WHERE name = 'repoUrl')
+					WHEN 'https://store.rei3.de' THEN 'Official REI3 Repository'
+					ELSE 'Standard'
+				END,
+				(SELECT value FROM instance.config WHERE name = 'repoUrl'),
+				(SELECT value FROM instance.config WHERE name = 'repoUser'),
+				(SELECT value FROM instance.config WHERE name = 'repoPass'),
+				CASE (SELECT value FROM instance.config WHERE name = 'repoSkipVerify')
+					WHEN '1' THEN TRUE
+					ELSE FALSE
+				END,
+				CASE (SELECT value FROM instance.config WHERE name = 'repoFeedback')
+					WHEN '1' THEN TRUE
+					ELSE FALSE
+				END,
+				(SELECT value FROM instance.config WHERE name = 'repoChecked')::BIGINT,
+				TRUE
+			);
+
+			DELETE FROM instance.config
+			WHERE name = ANY('{repoUrl,repoUser,repoPass,repoSkipVerify,repoFeedback,repoChecked}'::TEXT[]);
+			
+			ALTER TYPE instance_cluster.node_event_content ADD VALUE 'reposChanged';
+
+			ALTER TABLE instance.repo_module      ADD COLUMN repo_id UUID;
+			ALTER TABLE instance.repo_module_meta ADD COLUMN repo_id UUID;
+
+			UPDATE instance.repo_module      SET repo_id = (SELECT id FROM instance.repo LIMIT 1);
+			UPDATE instance.repo_module_meta SET repo_id = (SELECT id FROM instance.repo LIMIT 1);
+
+			ALTER TABLE instance.repo_module      ALTER COLUMN repo_id SET NOT NULL;
+			ALTER TABLE instance.repo_module_meta ALTER COLUMN repo_id SET NOT NULL;
+
+			ALTER TABLE instance.repo_module ADD CONSTRAINT repo_module_repo_id_fkey FOREIGN KEY (repo_id)
+				REFERENCES instance.repo (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+			ALTER TABLE instance.repo_module_meta ADD CONSTRAINT repo_module_repo_id_fkey FOREIGN KEY (repo_id)
+				REFERENCES instance.repo (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+
+			CREATE INDEX IF NOT EXISTS fki_repo_module_repo_id_fkey      ON instance.repo_module USING btree (repo_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_repo_module_meta_repo_id_fkey ON instance.repo_module USING btree (repo_id ASC NULLS LAST);
+
+			ALTER TABLE instance.repo_module DROP CONSTRAINT repo_module_name_key;
+			ALTER TABLE instance.repo_module DROP CONSTRAINT repo_module_pkey;
+			ALTER TABLE instance.repo_module      ADD CONSTRAINT repo_module_pkey      PRIMARY KEY (repo_id,module_id_wofk);
+			ALTER TABLE instance.repo_module_meta ADD CONSTRAINT repo_module_meta_pkey PRIMARY KEY (repo_id,module_id_wofk,language_code);
+
+			-- modules releases
+			ALTER TABLE app.module ADD   COLUMN release_log_categories TEXT[] NOT NULL DEFAULT '{Added,Improved,Fixed}';
+			ALTER TABLE app.module ALTER COLUMN release_log_categories DROP DEFAULT;
+
+			CREATE TABLE IF NOT EXISTS app.release (
+				module_id uuid NOT NULL,
+				build integer NOT NULL,
+				build_app integer NOT NULL,
+				date_created bigint NOT NULL,
+				CONSTRAINT release_pkey PRIMARY KEY (module_id,build),
+				CONSTRAINT release_module_id_fkey FOREIGN KEY (module_id)
+					REFERENCES app.module (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_release_module_id_fkey ON app.release USING btree (module_id ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS ind_release_build          ON app.release USING btree (build     ASC NULLS LAST);
+
+			CREATE TABLE IF NOT EXISTS app.release_log (
+				module_id uuid NOT NULL,
+				build integer NOT NULL,
+				"position" smallint NOT NULL,
+				category smallint NOT NULL,
+				content text COLLATE pg_catalog."default" NOT NULL,
+				CONSTRAINT release_log_pkey PRIMARY KEY (module_id, build, position),
+				CONSTRAINT release_log_release_fkey FOREIGN KEY (module_id, build)
+					REFERENCES app.release (module_id, build) MATCH FULL
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX IF NOT EXISTS fki_release_log_module_id_fkey ON app.release_log USING btree (module_id        ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS fki_release_log_release_fkey   ON app.release_log USING btree (module_id, build ASC NULLS LAST);
+			CREATE INDEX IF NOT EXISTS ind_release_log_position       ON app.release_log USING btree ("position"       ASC NULLS LAST);
+
+			INSERT INTO app.release (module_id, build, build_app, date_created)
+			SELECT id, 0, 0, 0
+			FROM app.module;
+
+			-- encrypted export key storage for logins
+			CREATE TABLE IF NOT EXISTS instance.login_export_key (
+				login_id integer NOT NULL,
+				data_enc text COLLATE pg_catalog."default" NOT NULL,
+				data_key_enc text COLLATE pg_catalog."default" NOT NULL,
+				CONSTRAINT login_export_key_pkey PRIMARY KEY (login_id),
+				CONSTRAINT login_export_key_login_id_fkey FOREIGN KEY (login_id)
+					REFERENCES instance.login (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+
+			-- encrypted repo credential storage for logins
+			CREATE TABLE IF NOT EXISTS instance.login_repo_cred (
+				login_id integer NOT NULL,
+				repo_id uuid NOT NULL,
+				data_key_enc text COLLATE pg_catalog."default" NOT NULL,
+				data_user_enc text COLLATE pg_catalog."default" NOT NULL,
+				data_pass_enc text COLLATE pg_catalog."default" NOT NULL,
+				CONSTRAINT login_repo_cred_pkey PRIMARY KEY (login_id,repo_id),
+				CONSTRAINT login_repo_cred_login_id_fkey FOREIGN KEY (login_id)
+					REFERENCES instance.login (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT login_repo_cred_repo_id_fkey FOREIGN KEY (repo_id)
+					REFERENCES instance.repo (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+
+			-- relation title
+			ALTER TYPE app.caption_content ADD VALUE 'relationTitle';
+			
+			ALTER TABLE app.caption ADD COLUMN     relation_id uuid;
+			ALTER TABLE app.caption ADD CONSTRAINT caption_relation_id_fkey FOREIGN KEY (relation_id)
+				REFERENCES app.relation (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+
+			CREATE INDEX fki_caption_relation_id_fkey ON app.caption USING BTREE (relation_id ASC NULLS LAST);
+
+			ALTER TABLE instance.caption ADD COLUMN     relation_id uuid;
+			ALTER TABLE instance.caption ADD CONSTRAINT caption_relation_id_fkey FOREIGN KEY (relation_id)
+				REFERENCES app.relation (id) MATCH SIMPLE
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				DEFERRABLE INITIALLY DEFERRED;
+
+			CREATE INDEX fki_caption_relation_id_fkey ON instance.caption USING BTREE (relation_id ASC NULLS LAST);
+
+			-- record title
+			CREATE TABLE IF NOT EXISTS app.relation_record_title (
+				relation_id uuid NOT NULL,
+				attribute_id uuid NOT NULL,
+				position int NOT NULL,
+				CONSTRAINT relation_record_title_pkey PRIMARY KEY (relation_id, position),
+				CONSTRAINT relation_record_title_relation_id_fkey FOREIGN KEY (relation_id)
+					REFERENCES app.relation (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED,
+				CONSTRAINT relation_record_title_attribute_id_fkey FOREIGN KEY (attribute_id)
+					REFERENCES app.attribute (id) MATCH SIMPLE
+					ON UPDATE CASCADE
+					ON DELETE CASCADE
+					DEFERRABLE INITIALLY DEFERRED
+			);
+			CREATE INDEX fki_relation_record_title_relation_id_fkey  ON app.relation_record_title USING BTREE (relation_id  ASC NULLS LAST);
+			CREATE INDEX fki_relation_record_title_attribute_id_fkey ON app.relation_record_title USING BTREE (attribute_id ASC NULLS LAST);
+
+			ALTER TABLE app.form ADD   COLUMN record_title BOOL NOT NULL DEFAULT FALSE;
+			ALTER TABLE app.form ALTER COLUMN record_title DROP DEFAULT;
+
+			-- data log comments
+			ALTER TABLE instance.data_log ADD COLUMN comment TEXT;
+			ALTER TABLE instance.data_log ALTER COLUMN login_id_wofk DROP NOT NULL;
+			CREATE INDEX IF NOT EXISTS fki_data_log_relation_id_fkey ON instance.data_log USING btree (relation_id ASC NULLS LAST);
+			
+			CREATE OR REPLACE FUNCTION instance.data_log_comment_create(
+				_relation_id uuid,
+				_record_id bigint,
+				_login_id integer,
+				_comment text)
+				RETURNS void
+				LANGUAGE 'plpgsql'
+				COST 100
+				VOLATILE PARALLEL UNSAFE
+			AS $BODY$
+			DECLARE
+			BEGIN
+				IF _comment IS NULL THEN
+					RETURN;
+				END IF;
+
+				INSERT INTO instance.data_log (id, relation_id, record_id_wofk, login_id_wofk, comment, date_change)
+				VALUES(gen_random_uuid(), _relation_id, _record_id, _login_id, _comment, EXTRACT(EPOCH FROM NOW()));
+			END;
+			$BODY$;
+
+			-- data log deletion
+			CREATE OR REPLACE FUNCTION instance.data_log_delete(
+				_relation_id uuid,
+				_record_id bigint)
+				RETURNS void
+				LANGUAGE 'plpgsql'
+				COST 100
+				VOLATILE PARALLEL UNSAFE
+			AS $BODY$
+			DECLARE
+			BEGIN
+				IF _relation_id IS NULL OR _record_id IS NULL THEN
+					RETURN;
+				END IF;
+
+				DELETE FROM instance.data_log
+				WHERE relation_id    = _relation_id
+				AND   record_id_wofk = _record_id;
+			END;
+			$BODY$;
+
+			-- mail account: no authentication option
+			ALTER TYPE instance.mail_account_auth_method ADD VALUE 'none';
+
+			-- mail account: plain connect method
+			CREATE TYPE instance.mail_account_connect_method AS ENUM ('starttls', 'tls', 'plain');
+			ALTER TABLE instance.mail_account ADD   COLUMN connect_method TEXT NOT NULL DEFAULT 'tls';
+			ALTER TABLE instance.mail_account ALTER COLUMN connect_method DROP DEFAULT;
+			UPDATE instance.mail_account SET connect_method = 'starttls' WHERE start_tls = TRUE;
+			ALTER TABLE instance.mail_account DROP COLUMN start_tls;
+
+			-- mail account: SMIME signing for SMTP
+			ALTER TABLE instance.mail_account ADD   COLUMN smime_path_crt TEXT;
+			ALTER TABLE instance.mail_account ADD   COLUMN smime_path_key TEXT;
+			ALTER TABLE instance.mail_account ADD   COLUMN smime_sign BOOLEAN NOT NULL DEFAULT FALSE;
+			ALTER TABLE instance.mail_account ALTER COLUMN smime_sign DROP DEFAULT;
+
+			-- file_text_read function with callback value
+			ALTER TYPE  instance.file_spool_content ADD VALUE 'textReadCb';
+			ALTER TABLE instance.file_spool         ADD COLUMN callback_value TEXT;
+			CREATE FUNCTION instance.file_text_read_cb(
+				pg_function_id uuid,
+				callback_value TEXT,
+				file_id uuid,
+				file_version integer DEFAULT NULL)
+				RETURNS integer
+				LANGUAGE 'plpgsql'
+			AS $BODY$
+				DECLARE
+				BEGIN
+					INSERT INTO instance.file_spool (
+						content,
+						date,
+						pg_function_id,
+						file_id,
+						file_version,
+						callback_value
+					)
+					VALUES(
+						'textReadCb',
+						EXTRACT(EPOCH FROM NOW()),
+						pg_function_id,
+						file_id,
+						file_version,
+						callback_value
+					);
+					RETURN 0;
+				END;
+			$BODY$;
+
+			-- OpenID, admin claim
+			ALTER TABLE instance.oauth_client ADD COLUMN claim_admin       TEXT;
+			ALTER TABLE instance.oauth_client ADD COLUMN claim_admin_value TEXT;
+
+			-- config: disable modifier keys
+			INSERT INTO instance.config (name,value) VALUES ('hotkeyModExcl','[]');
+
+			-- migrate adminMails config option
+			INSERT INTO instance.config (name,value) VALUES ('adminMailAddresses',(
+				SELECT CASE WHEN value = '' THEN '[]' ELSE value END
+				FROM instance.config
+				WHERE name = 'adminMails'
+			));
+			DELETE FROM instance.config WHERE name = 'adminMails';
+
+			-- fix fickle update_collection instance function
+			CREATE OR REPLACE FUNCTION instance.update_collection(
+				collection_id UUID,
+				login_ids INTEGER[] DEFAULT ARRAY[]::INTEGER[])
+				RETURNS integer
+				LANGUAGE 'plpgsql'
+				COST 100
+				VOLATILE PARALLEL UNSAFE
+			AS $BODY$
+			DECLARE
+			BEGIN
+				INSERT INTO instance_cluster.node_event (node_id,content,payload)
+				SELECT
+					id,
+					'collectionUpdated',
+					JSONB_BUILD_OBJECT(
+						'collectionId', collection_id,
+						'loginIds', COALESCE(login_ids, ARRAY[]::INTEGER[])
+					)::TEXT
+				FROM instance_cluster.node;
+				
+				RETURN 0;
+			END;
+			$BODY$;
+		`)
+		return "4.2", err
+	},
+	"4.0": func(ctx context.Context, tx pgx.Tx) (string, error) {
+		// No database changes needed for 3.11 -> 4.0 upgrade
+		// This upgrade function exists to provide a path from 3.11 to 4.0
+		return "4.1", nil
+	},
 	"3.11": func(ctx context.Context, tx pgx.Tx) (string, error) {
 		// No database changes needed for 3.11 -> 4.0 upgrade
 		// This upgrade function exists to provide a path from 3.11 to 4.0

@@ -12,8 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+type errContext string
 type errExpected struct {
-	context string
+	context errContext
 	matchRx *regexp.Regexp // regex that matches the expected error message
 	number  int
 }
@@ -32,6 +33,7 @@ const (
 	ErrContextDbs = "DBS"
 	ErrContextLic = "LIC"
 	ErrContextSec = "SEC"
+	ErrContextTrf = "TRF"
 
 	// error codes
 	ErrCodeAppUnknown               int = 1
@@ -62,11 +64,14 @@ const (
 	ErrCodeSecUnauthorized          int = 1
 	ErrCodeSecDataKeysNotAvailable  int = 5
 	ErrCodeSecNoPublicKeys          int = 6
+	ErrCodeTrfRepoCommitBuildOld    int = 1
+	ErrCodeTrfRepoCommitNoApp       int = 2
+	ErrCodeTrfRepoCommitTooManyApps int = 3
 )
 
 var (
 	// errors
-	errContexts     = []string{ErrContextApp, ErrContextCsv, ErrContextDbs, ErrContextLic, ErrContextSec}
+	errContexts     = []errContext{ErrContextApp, ErrContextCsv, ErrContextDbs, ErrContextLic, ErrContextSec, ErrContextTrf}
 	errCodeDbsCache = regexp.MustCompile(fmt.Sprintf("^{ERR_DBS_%03d}", ErrCodeDbsChangedCachePlan))
 	errCodeLicRx    = regexp.MustCompile(`^{ERR_LIC_(\d{3})}`)
 	errCodeRx       = regexp.MustCompile(`^{ERR_([A-Z]{3})_(\d{3})}`)
@@ -104,7 +109,7 @@ var (
 // context is the general error context: APP (application), DBS (database system), SEC (security/access), ...
 // number is the unique error code, used to convert to a translated error message
 // example error code: {ERR_DBS_069}
-func CreateErrCode(context string, number int) error {
+func CreateErrCode(context errContext, number int) error {
 	if !slices.Contains(errContexts, context) {
 		return errors.New("{INVALID_ERROR_CONTEXT}")
 	}
@@ -112,7 +117,7 @@ func CreateErrCode(context string, number int) error {
 }
 
 // as CreateErrCode, but appends JSON encoded data to the string
-func CreateErrCodeWithData(context string, number int, data interface{}) error {
+func CreateErrCodeWithData(context errContext, number int, data any) error {
 	code := CreateErrCode(context, number)
 
 	j, err := json.Marshal(data)
@@ -218,6 +223,9 @@ func CheckForDbsCacheErrCode(err error) bool {
 }
 
 // default schema errors
+func ErrSchemaUnknownApi(id uuid.UUID) error {
+	return fmt.Errorf("unknown API '%s'", id)
+}
 func ErrSchemaUnknownModule(id uuid.UUID) error {
 	return fmt.Errorf("unknown module '%s'", id)
 }
@@ -238,6 +246,9 @@ func ErrSchemaUnknownClientEvent(id uuid.UUID) error {
 }
 func ErrSchemaUnknownPgFunction(id uuid.UUID) error {
 	return fmt.Errorf("unknown backend function '%s'", id)
+}
+func ErrSchemaUnknownDoc(id uuid.UUID) error {
+	return fmt.Errorf("unknown document '%s'", id)
 }
 func ErrSchemaTriggerPgFunctionCall(id uuid.UUID) error {
 	return fmt.Errorf("backend function '%s' is a trigger function, it cannot be called directly", id)

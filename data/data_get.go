@@ -40,7 +40,7 @@ func Get_tx(ctx context.Context, tx pgx.Tx, data types.DataGet, loginId int64, q
 	indexRelationIds := make(map[int]uuid.UUID) // map of accessed relation IDs, key: relation index
 	isDoingRowCount := data.Limit != 0
 	relationIndexesEnc := make([]int, 0) // indexes of relations from encrypted attributes within expressions
-	queryArgs := make([]interface{}, 0)  // SQL arguments for data query
+	queryArgs := make([]any, 0)          // SQL arguments for data query
 
 	// prepare SQL query for data GET request
 	*query, err = prepareQuery(data, indexRelationIds, &queryArgs, loginId, isDoingRowCount, 0)
@@ -73,9 +73,9 @@ func Get_tx(ctx context.Context, tx pgx.Tx, data types.DataGet, loginId int64, q
 			}
 		}
 
-		indexRecordIds := make(map[int]interface{}) // ID for each relation tuple by index
-		indexRecordEncKeys := make(map[int]string)  // encrypted key for each relation tuple by index
-		values := make([]interface{}, 0)            // final values for selected attributes
+		indexRecordIds := make(map[int]any)        // ID for each relation tuple by index
+		indexRecordEncKeys := make(map[int]string) // encrypted key for each relation tuple by index
+		values := make([]any, 0)                   // final values for selected attributes
 
 		// collect values for expressions
 		for i := 0; i < len(data.Expressions); i++ {
@@ -272,10 +272,18 @@ func Get_tx(ctx context.Context, tx pgx.Tx, data types.DataGet, loginId int64, q
 }
 
 // returns SQL query from data GET request (sub query if nesting level != 0)
-func prepareQuery(data types.DataGet, indexRelationIds map[int]uuid.UUID, queryArgs *[]interface{}, loginId int64, addRowCount bool, nestingLevel int) (string, error) {
+func prepareQuery(data types.DataGet, indexRelationIds map[int]uuid.UUID, queryArgs *[]any,
+	loginId int64, addRowCount bool, nestingLevel int) (string, error) {
 
-	for _, expr := range data.Expressions {
-		if expr.AttributeId.Valid && !authorizedAttribute(loginId, expr.AttributeId.Bytes, types.AccessRead) {
+	// check for access permissions, unless it´s a system task (login ID = -1)
+	if loginId != -1 {
+		attributeIdsReadAccess := make([]uuid.UUID, 0)
+		for _, expr := range data.Expressions {
+			if expr.AttributeId.Valid {
+				attributeIdsReadAccess = append(attributeIdsReadAccess, expr.AttributeId.Bytes)
+			}
+		}
+		if !authorizedAttributes(loginId, attributeIdsReadAccess, types.AccessRead) {
 			return "", errors.New(handler.ErrUnauthorized)
 		}
 	}
@@ -325,14 +333,16 @@ func prepareQuery(data types.DataGet, indexRelationIds map[int]uuid.UUID, queryA
 	}
 
 	// add filter for base relation policy if applicable
-	policyFilter, err := getPolicyFilter(loginId, "select",
-		getRelationCode(data.IndexSource, nestingLevel), rel.Policies)
+	if loginId != -1 {
+		policyFilter, err := getPolicyFilter(loginId, "select",
+			getRelationCode(data.IndexSource, nestingLevel), rel.Policies)
 
-	if err != nil {
-		return "", err
-	}
-	if policyFilter != "" {
-		inWhere = append(inWhere, policyFilter)
+		if err != nil {
+			return "", err
+		}
+		if policyFilter != "" {
+			inWhere = append(inWhere, policyFilter)
+		}
 	}
 
 	// add filters to query, replacing first AND with WHERE
@@ -559,7 +569,7 @@ func getQuerySelect(exprPos int, expr types.DataGetExpression, nestingLevel int)
 }
 
 func getQueryJoin(indexRelationIds map[int]uuid.UUID, join types.DataGetJoin, filters []types.DataGetFilter,
-	queryArgs *[]interface{}, loginId int64, nestingLevel int) (string, error) {
+	queryArgs *[]any, loginId int64, nestingLevel int) (string, error) {
 
 	// check join attribute
 	atr, exists := cache.AttributeIdMap[join.AttributeId]
@@ -630,7 +640,7 @@ func getQueryJoin(indexRelationIds map[int]uuid.UUID, join types.DataGetJoin, fi
 }
 
 // parses filters to generate query lines and arguments
-func getQueryWhere(filter types.DataGetFilter, queryArgs *[]interface{}, loginId int64, nestingLevel int) (string, error) {
+func getQueryWhere(filter types.DataGetFilter, queryArgs *[]any, loginId int64, nestingLevel int) (string, error) {
 
 	if !slices.Contains(types.QueryFilterConnectors, filter.Connector) {
 		return "", errors.New("bad filter connector")

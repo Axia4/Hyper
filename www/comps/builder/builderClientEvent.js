@@ -1,9 +1,10 @@
-import MyBuilderCaption  from './builderCaption.js';
-import MyInputHotkey     from '../inputHotkey.js';
-import {copyValueDialog} from '../shared/generic.js';
-export {MyBuilderClientEvent as default};
+import MyBuilderCaption         from './builderCaption.js';
+import MyInputHotkey            from '../inputHotkey.js';
+import {getTemplateClientEvent} from '../shared/builderTemplate.js';
+import {dialogDeleteAsk}        from '../shared/dialog.js';
+import {copyValueDialog}        from '../shared/generic.js';
 
-let MyBuilderClientEvent = {
+export default {
 	name:'my-builder-client-event',
 	components:{ MyBuilderCaption, MyInputHotkey },
 	template:`<div class="app-sub-window under-header" @mousedown.self="$emit('close')">
@@ -40,7 +41,7 @@ let MyBuilderClientEvent = {
 						:caption="capGen.id"
 					/>
 					<my-button image="delete.png"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!isNew && !readonly"
 						:cancel="true"
 						:caption="capGen.button.delete"
@@ -85,6 +86,7 @@ let MyBuilderClientEvent = {
 									v-model:char="values.hotkeyChar"
 									v-model:modifier1="values.hotkeyModifier1"
 									v-model:modifier2="values.hotkeyModifier2"
+									:allKeys="true"
 									:readonly="readonly"
 									:twoLines="true"
 								/>
@@ -215,6 +217,8 @@ let MyBuilderClientEvent = {
 	methods:{
 		// externals
 		copyValueDialog,
+		dialogDeleteAsk,
+		getTemplateClientEvent,
 		
 		// actions
 		closeReload() {
@@ -235,42 +239,14 @@ let MyBuilderClientEvent = {
 		reset() {
 			this.values = this.id !== null
 				? JSON.parse(JSON.stringify(this.clientEventIdMap[this.id]))
-				: {
-					id:null,
-					moduleId:this.module.id,
-					action:'callJsFunction',
-					arguments:[],
-					event:'onHotkey',
-					hotkeyModifier1:'CTRL',
-					hotkeyModifier2:null,
-					hotkeyChar:null,
-					jsFunctionId:null,
-					pgFunctionId:null,
-					captions:{
-						clientEventTitle:{}
-					}
-				};
+				: this.getTemplateClientEvent(this.module.id);
 			
 			this.valuesOrg = JSON.parse(JSON.stringify(this.values));
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
-			ws.send('clientEvent','del',{id:this.id},true).then(
+			ws.send('clientEvent','del',this.id,true).then(
 				this.closeReload,
 				this.$root.genericError
 			);

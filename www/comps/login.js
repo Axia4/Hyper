@@ -185,112 +185,78 @@ export default {
 			showError:false,
 			
 			// default messages
-			language:'en_us',
-			languages:['de_de','en_us','es_es','eu_es'],
+			language:'en_US',
+			languages:['de','en_US'],
 			message:{
 				authExt:{
-					de_de:'Externe Anmeldung',
-					en_us:'External login',
-					es_es:'Inicio de sesión externo',
-					eu_es:'Kanpoko saio-hasiera'
+					de:'Externe Anmeldung',
+					en_US:'External login'
 				},
 				authInt:{
-					de_de:'Interne Anmeldung',
-					en_us:'Internal login',
-					es_es:'Inicio de sesión interno',
-					eu_es:'Barne saio-hasiera'
+					de:'Interne Anmeldung',
+					en_US:'Internal login'
 				},
 				clusterNode:{
-					de_de:'Verbunden mit: ',
-					en_us:'Connected with: ',
-					es_es:'Conectado con: ',
-					eu_es:'Honekin konektatuta: '
+					de:'Verbunden mit: ',
+					en_US:'Connected with: '
 				},
 				error:{
-					de_de:'Ein Fehler ist aufgetreten - bitte erneut versuchen',
-					en_us:'An error occurred - please try again',
-					es_es:'Ha ocurrido un error - por favor inténtalo de nuevo',
-					eu_es:'Errore bat gertatu da - saiatu berriro mesedez'
+					de:'Ein Fehler ist aufgetreten - bitte erneut versuchen',
+					en_US:'An error occurred - please try again'
 				},
 				httpMode:{
-					de_de:'Verbindung ist nicht verschlüsselt',
-					en_us:'Connection is not encrypted',
-					es_es:'La conexión no está cifrada',
-					eu_es:'Konexioa ez dago zifratuta'
+					de:'Verbindung ist nicht verschlüsselt',
+					en_US:'Connection is not encrypted'
 				},
 				license:{
 					'{ERR_LIC_001}':{
-						de_de:'Systemaktivierung ist abgelaufen - bitte den Systemadministrator kontaktieren',
-						en_us:'System activation has expired - please contact your system administrator',
-						es_es:'La activación del sistema ha expirado - por favor contacta con tu administrador del sistema',
-						eu_es:'Sistemaren aktibazioa iraungita dago - jarri harremanetan sistema-administratzailearekin mesedez'
+						de:'Systemaktivierung ist abgelaufen - bitte den Systemadministrator kontaktieren',
+						en_US:'System activation has expired - please contact your system administrator'
 					},
 					'{ERR_LIC_002}':{
-						de_de:'Anzahl gleichzeitiger Benutzer erreicht - bitte den Systemadministrator kontaktieren',
-						en_us:'Concurrent user count reached - please contact your system administrator',
-						es_es:'Número de usuarios simultáneos alcanzado - por favor contacta con tu administrador del sistema',
-						eu_es:'Aldi bereko erabiltzaile kopuru maximoa lortu da - jarri harremanetan sistema-administratzailearekin mesedez'
+						de:'Anzahl gleichzeitiger Benutzer erreicht - bitte den Systemadministrator kontaktieren',
+						en_US:'Concurrent user count reached - please contact your system administrator'
 					}
 				},
 				loading:{
-					de_de:'Am Laden...',
-					en_us:'Loading...',
-					es_es:'Cargando...',
-					eu_es:'Kargatzen...'
+					de:'Am Laden...',
+					en_US:'Loading...'
 				},
 				login:{
-					de_de:'Anmelden',
-					en_us:'Login',
-					es_es:'Iniciar sesión',
-					eu_es:'Saioa hasi'
+					de:'Anmelden',
+					en_US:'Login'
 				},
 				maintenanceMode:{
-					de_de:'Wartungsmodus ist aktiv',
-					en_us:'Maintenance mode is active',
-					es_es:'El modo de mantenimiento está activo',
-					eu_es:'Mantentze modua aktibo dago'
+					de:'Wartungsmodus ist aktiv',
+					en_US:'Maintenance mode is active'
 				},
 				mfa:{
-					de_de:'Multi-Faktor-Anmeldung',
-					en_us:'Multi-factor login',
-					es_es:'Inicio de sesión multifactor',
-					eu_es:'Faktore anitzeko saio-hasiera'
+					de:'Multi-Faktor-Anmeldung',
+					en_US:'Multi-factor login'
 				},
 				mfaHint:{
-					de_de:'6-stelliger Validierungs-Code',
-					en_us:'6 digit validation code',
-					es_es:'Código de validación de 6 dígitos',
-					eu_es:'6 zifrako balidazio kodea'
+					de:'6-stelliger Validierungs-Code',
+					en_US:'6 digit validation code'
 				},
 				password:{
-					de_de:'Passwort',
-					en_us:'Password',
-					es_es:'Contraseña',
-					eu_es:'Pasahitza'
+					de:'Passwort',
+					en_US:'Password'
 				},
 				sessionExpired:{
-					de_de:'Sitzung abgelaufen - bitte erneut anmelden',
-					en_us:'Session expired - please login again',
-					es_es:'Sesión expirada - por favor inicia sesión de nuevo',
-					eu_es:'Saioa iraungita - saioa hasi berriro mesedez'
+					de:'Sitzung abgelaufen - bitte erneut anmelden',
+					en_US:'Session expired - please login again'
 				},
 				stayLoggedIn:{
-					de_de:'Angemeldet bleiben',
-					en_us:'Stay logged in',
-					es_es:'Mantener sesión iniciada',
-					eu_es:'Saioa irekita mantendu'
+					de:'Angemeldet bleiben',
+					en_US:'Stay logged in'
 				},
 				username:{
-					de_de:'Benutzername',
-					en_us:'Username',
-					es_es:'Nombre de usuario',
-					eu_es:'Erabiltzaile-izena'
+					de:'Benutzername',
+					en_US:'Username'
 				},
 				wsBroken:{
-					de_de:'Warten auf Serververbindung...',
-					en_us:'Waiting for server connection...',
-					es_es:'Esperando conexión al servidor...',
-					eu_es:'Zerbitzarira konexioaren zain...'
+					de:'Warten auf Serververbindung...',
+					en_US:'Waiting for server connection...'
 				}
 			}
 		};
@@ -380,8 +346,8 @@ export default {
 	},
 	mounted() {
 		// overwrite language by browser setting
-		if(this.languages.includes(window.navigator.language.toLowerCase().replace("-", "_")))
-			this.language = window.navigator.language.toLowerCase().replace("-", "_");
+		if(this.languages.includes(window.navigator.language))
+			this.language = window.navigator.language;
 		
 		// set page title
 		this.$store.commit('pageTitle',this.message.login[this.language]);
@@ -445,12 +411,17 @@ export default {
 										oauthClientId:c.id,
 										state:state
 									});
+
+									// enforce 'openid' scope
+									let scopes = JSON.parse(JSON.stringify(c.scopes));
+									if(!scopes.includes('openid'))
+										scopes.push('openid');
 									
 									const urlEndpoint = new URL(as.authorization_endpoint);
 									urlEndpoint.searchParams.set('client_id',c.clientId);
 									urlEndpoint.searchParams.set('redirect_uri',c.redirectUrl);
 									urlEndpoint.searchParams.set('response_type','code');
-									urlEndpoint.searchParams.set('scope',c.scopes.join(' '));
+									urlEndpoint.searchParams.set('scope',scopes.join(' '));
 									urlEndpoint.searchParams.set('code_challenge',challenge);
 									urlEndpoint.searchParams.set('code_challenge_method','S256');
 									// encode state with base64, some characters are not correctly returned in redirect URL (example: Azure AD '§')

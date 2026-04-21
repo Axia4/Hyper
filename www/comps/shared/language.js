@@ -21,6 +21,9 @@ export function getCaptionMapName(content) {
 		case 'articleTitle':     return 'articleIdMap';     break;
 		case 'attributeTitle':   return 'attributeIdMap';   break;
 		case 'clientEventTitle': return 'clientEventIdMap'; break;
+		case 'docTitle':         return 'docIdMap';         break;
+		case 'docColumnTitle':   return 'docColumnIdMap';   break;
+		case 'docFieldText':     return 'docFieldIdMap';    break;
 		case 'columnTitle':      return 'columnIdMap';      break;
 		case 'fieldHelp':        // fallthrough
 		case 'fieldTitle':       return 'fieldIdMap';       break;
@@ -33,6 +36,7 @@ export function getCaptionMapName(content) {
 		case 'moduleTitle':      return 'moduleIdMap';      break;
 		case 'pgFunctionTitle':  return 'pgFunctionIdMap';  break;
 		case 'queryChoiceTitle': return 'queryChoiceIdMap'; break;
+		case 'relationTitle':    return 'relationIdMap';    break;
 		case 'roleDesc':         // fallthrough
 		case 'roleTitle':        return 'roleIdMap';        break;
 		case 'searchBarTitle':   return 'searchBarIdMap';   break;
@@ -48,7 +52,6 @@ export function getDictByLang() {
 		case 'de': dict = 'german';    break;
 		case 'en': dict = 'english';   break;
 		case 'es': dict = 'spanish';   break;
-		case 'eu': dict = 'spanish';   break; // Basque fallback to Spanish
 		case 'fr': dict = 'french';    break;
 		case 'hu': dict = 'hungarian'; break;
 		case 'it': dict = 'italian';   break;

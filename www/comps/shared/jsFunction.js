@@ -1,7 +1,7 @@
 import MyStore       from '../../stores/store.js';
 import {formOpen}    from './form.js';
 import {generatePdf} from './pdf.js';
-import {getNilUuid}  from './generic.js';
+import {openLink}    from './generic.js';
 import {
 	getCollectionMultiValues,
 	updateCollections
@@ -34,6 +34,27 @@ const exposedFunctionsGlobal = {
 	go_back:          ()  => window.history.back(),
 	has_role:         (v) => MyStore.getters.access.roleIds.includes(v),
 	logoff:           ()  => MyStore.getters.appFunctions.sessionInvalid(false,true),
+
+	// URL open functions
+	url_open_as_tab:(url) => openLink(url,true),
+	url_open_as_window:(url,width,height,top,left) => {
+		if(width  === undefined || isNaN(parseInt(width)))  width  = 800;
+		if(height === undefined || isNaN(parseInt(height))) height = 600;
+
+		let opts = ['noopener','noreferrer','resizable=yes','scrollbars=yes','titlebar=yes',`width=${width}`,`height=${height}`];
+		if(top  !== undefined && !isNaN(parseInt(top)))  opts.push(`top=${top}`);
+		if(left !== undefined && !isNaN(parseInt(left))) opts.push(`left=${left}`);
+
+		window.open(url,'_blank',opts.join(','));
+	},
+
+	// global search
+	global_search_start:(input) => {
+		if(MyStore.getters.searchModuleIds.length === 0)
+			return console.warn('cannot start global search, no search bars available');
+
+		MyStore.commit('globalSearchInput',input !== undefined ? input : window.getSelection().toString());
+	},
 
 	// collection functions
 	collection_read:getCollectionMultiValues,
@@ -71,41 +92,10 @@ const exposedFunctionsGlobal = {
 				
 	// PDF functions
 	pdf_create:(filename,format,orientation,marginX,marginY,header,body,footer,css,attributeId,recordId) => {
-		return new Promise((resolve,reject) => {
-			const uploadFile = attributeId !== undefined && recordId !== undefined;
-			const callbackResult = (blob) => {
-				if(!uploadFile)
-					return resolve();
-				
-				let formData = new FormData();
-				let xhr      = new XMLHttpRequest();
-				xhr.onload = event => {
-					const res = JSON.parse(xhr.response);
-					if(typeof res.error !== 'undefined')
-						return reject(res.error);
-					
-					let value = {fileIdMapChange:{}};
-					value.fileIdMapChange[res.id] = {
-						action:'create',
-						name:filename,
-						version:-1
-					};
-					ws.send('data','set',{0:{
-						relationId:MyStore.getters['schema/attributeIdMap'][attributeId].relationId,
-						recordId:recordId,
-						attributes:[{attributeId:attributeId,value:value}]
-					}},true).then(() => resolve(),reject);
-				};
-				formData.append('token',MyStore.getters['local/token']);
-				formData.append('attributeId',attributeId);
-				formData.append('fileId',getNilUuid());
-				formData.append('file',blob);
-				xhr.open('POST','data/upload',true);
-				xhr.send(formData);
-			};
-			generatePdf(filename,format,orientation,marginX,marginY,
-				header,body,footer,css,callbackResult,uploadFile);
-		});
+		return generatePdf('transliterate',filename,format,orientation,marginX,marginY,header,body,footer,css,attributeId,recordId);
+	},
+	pdf_create_utf8:(utf8_mode,filename,format,orientation,marginX,marginY,header,body,footer,css,attributeId,recordId) => {
+		return generatePdf(utf8_mode,filename,format,orientation,marginX,marginY,header,body,footer,css,attributeId,recordId);
 	},
 
 	// dialog functions
@@ -193,6 +183,7 @@ export function jsFunctionRun(jsFunctionId,args,exposedFunctionsContext) {
 		let history        = {};
 		let location       = {};
 		let navigator      = {};
+		let open           = {};
 		let setInterval    = {};
 		let setTimeout     = {};
 		let XMLHttpRequest = {};

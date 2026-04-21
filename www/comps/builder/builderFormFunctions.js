@@ -1,11 +1,10 @@
 import { getDependentModules } from '../shared/builder.js';
-export {MyBuilderFormFunctions as default};
 
-let MyBuilderFormFunction = {
+const MyBuilderFormFunction = {
 	name:'my-builder-form-function',
 	template:`<tr class="builder-form-function">
 		<td>
-			<img class="dragAnchor" src="images/drag.png" />
+			<img v-if="!readonly" class="dragAnchor" src="images/drag.png" />
 		</td>
 		<td>
 			<div class="row centered gap">
@@ -13,8 +12,9 @@ let MyBuilderFormFunction = {
 					v-model="eventBefore"
 					:caption0="capGen.after"
 					:caption1="capGen.before"
+					:readonly
 				/>
-				<select v-model="event">
+				<select v-model="event" :disabled="readonly">
 					<option value="open"  >{{ capApp.option.open   }}</option>
 					<option value="save"  >{{ capApp.option.save   }}</option>
 					<option value="delete">{{ capApp.option.delete }}</option>
@@ -27,7 +27,7 @@ let MyBuilderFormFunction = {
 		</td>
 		<td>
 			<div class="row gap">
-				<select v-model="jsFunctionId">
+				<select v-model="jsFunctionId" :disabled="readonly">
 					<option value="">-</option>
 					<option v-for="f in module.jsFunctions.filter(v => v.formId === formId)"
 						:value="f.id"
@@ -46,6 +46,7 @@ let MyBuilderFormFunction = {
 				<my-button image="add.png"
 					v-if="jsFunctionId === ''"
 					@trigger="$emit('createNew','jsFunction',{formId:formId})"
+					:active="!readonly"
 					:captionTitle="capGen.button.create"
 				/>
 				<my-button image="open.png"
@@ -58,14 +59,16 @@ let MyBuilderFormFunction = {
 		<td>
 			<my-button image="delete.png"
 				@trigger="$emit('remove')"
+				:active="!readonly"
 				:cancel="true"
 				:captionTitle="capGen.button.delete"
 			/>
 		</td>
 	</tr>`,
 	props:{
-		formId:    { type:String, required:true },
-		modelValue:{ type:Object, required:true }
+		formId:    { type:String,  required:true },
+		modelValue:{ type:Object,  required:true },
+		readonly:  { type:Boolean, required:true }
 	},
 	emits:['createNew','remove','update:modelValue'],
 	computed:{
@@ -84,12 +87,12 @@ let MyBuilderFormFunction = {
 		},
 		
 		// store
-		module:         (s) => s.moduleIdMap[s.formIdMap[s.formId].moduleId],
-		moduleIdMap:    (s) => s.$store.getters['schema/moduleIdMap'],
-		formIdMap:      (s) => s.$store.getters['schema/formIdMap'],
-		jsFunctionIdMap:(s) => s.$store.getters['schema/jsFunctionIdMap'],
-		capApp:         (s) => s.$store.getters.captions.builder.form.functions,
-		capGen:         (s) => s.$store.getters.captions.generic
+		module:         s => s.moduleIdMap[s.formIdMap[s.formId].moduleId],
+		moduleIdMap:    s => s.$store.getters['schema/moduleIdMap'],
+		formIdMap:      s => s.$store.getters['schema/formIdMap'],
+		jsFunctionIdMap:s => s.$store.getters['schema/jsFunctionIdMap'],
+		capApp:         s => s.$store.getters.captions.builder.form.functions,
+		capGen:         s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
@@ -113,13 +116,14 @@ let MyBuilderFormFunction = {
 	}
 };
 
-let MyBuilderFormFunctions = {
+export default {
 	name:'my-builder-form-functions',
 	components:{ MyBuilderFormFunction },
 	template:`<div class="builder-form-functions">
 		<div>
 			<my-button image="add.png"
 				@trigger="add"
+				:active="!readonly"
 				:caption="capGen.button.add"
 			/>
 		</div>
@@ -140,9 +144,10 @@ let MyBuilderFormFunctions = {
 						@createNew="(...args) => $emit('createNew',...args)"
 						@remove="remove(index)"
 						@update:modelValue="update(index,$event)"
-						:formId="formId"
+						:formId
 						:key="index"
 						:modelValue="element"
+						:readonly
 					/>
 				</template>
 			</draggable>
@@ -154,12 +159,13 @@ let MyBuilderFormFunctions = {
 		</div>
 	</div>`,
 	props:{
-		formId:    { type:String, required:true },
-		modelValue:{ type:Array,  required:true }
+		formId:    { type:String,  required:true },
+		modelValue:{ type:Array,   required:true },
+		readonly:  { type:Boolean, required:true }
 	},
 	emits:['createNew','update:modelValue'],
 	computed:{
-		anyWithoutFunction:(s) => {
+		anyWithoutFunction:s => {
 			for(const f of s.modelValue) {
 				if(f.jsFunctionId === '')
 					return true;
@@ -168,8 +174,8 @@ let MyBuilderFormFunctions = {
 		},
 		
 		// stores
-		capApp:(s) => s.$store.getters.captions.builder.form.functions,
-		capGen:(s) => s.$store.getters.captions.generic
+		capApp:s => s.$store.getters.captions.builder.form.functions,
+		capGen:s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// actions

@@ -1,10 +1,11 @@
 import MyBuilderCaption      from './builderCaption.js';
 import MyArticles            from '../articles.js';
 import {getDependentModules} from '../shared/builder.js';
+import {getTemplateArticle}  from '../shared/builderTemplate.js';
+import {dialogDeleteAsk}     from '../shared/dialog.js';
 import {copyValueDialog}     from '../shared/generic.js';
-export {MyBuilderArticles as default};
 
-let MyBuilderArticlesItem = {
+const MyBuilderArticlesItem = {
 	name:'my-builder-articles-item',
 	components:{MyBuilderCaption},
 	template:`<tbody>
@@ -19,7 +20,7 @@ let MyBuilderArticlesItem = {
 					/>
 					<my-button image="delete.png"
 						v-if="!isNew"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!readonly"
 						:cancel="true"
 						:captionTitle="capGen.button.delete"
@@ -37,18 +38,18 @@ let MyBuilderArticlesItem = {
 				<my-builder-caption
 					v-model="captions.articleTitle"
 					:language="builderLanguage"
-					:readonly="readonly"
+					:readonly
 				/>
 			</td>
 			<td>
 				<my-button image="edit.png"
-					@trigger="showContent = !showContent"
+					@trigger="open"
 					:caption="capGen.button.edit"
 				/>
 			</td>
 			<td>
 				<!-- article body pop up window -->
-				<div class="app-sub-window under-header" v-if="showContent" @mousedown.self="showContent = false">
+				<div class="app-sub-window under-header" v-if="showContent" @mousedown.self="close">
 					<div class="contentBox builder-articles-body shade popUp">
 						<div class="top lower">
 							<div class="area">
@@ -77,7 +78,7 @@ let MyBuilderArticlesItem = {
 									:caption="capGen.button.save"
 								/>
 								<my-button image="cancel.png"
-									@trigger="showContent = false"
+									@trigger="close"
 									:cancel="true"
 									:captionTitle="capGen.button.close"
 								/>
@@ -88,7 +89,7 @@ let MyBuilderArticlesItem = {
 								v-model="captions.articleBody"
 								:contentName="''"
 								:language="builderLanguage"
-								:readonly="readonly"
+								:readonly
 								:richtext="true"
 							/>
 						</div>
@@ -98,21 +99,13 @@ let MyBuilderArticlesItem = {
 		</tr>
 	</tbody>`,
 	props:{
+		article:        { type:Object,  required:true },
 		builderLanguage:{ type:String,  required:true },
+		isNew:          { type:Boolean, required:true },
 		module:         { type:Object,  required:true },
-		readonly:       { type:Boolean, required:true },
-		article:        { type:Object,  required:false,
-			default() { return{
-				id:null,
-				name:'',
-				captions:{
-					articleTitle:{},
-					articleBody:{}
-				}
-			}}
-		}
+		readonly:       { type:Boolean, required:true }
 	},
-	emits:['nextLanguage'],
+	emits:['nextLanguage','reset-new'],
 	data() {
 		return {
 			captions:JSON.parse(JSON.stringify(this.article.captions)),
@@ -126,64 +119,49 @@ let MyBuilderArticlesItem = {
 		hasChanges:(s) => s.name !== s.article.name
 			|| JSON.stringify(s.captions) !== JSON.stringify(s.article.captions),
 		
-		// simple states
-		isNew:(s) => s.article.id === null,
-		
 		// stores
 		capApp:(s) => s.$store.getters.captions.builder.articles,
 		capGen:(s) => s.$store.getters.captions.generic
 	},
-	mounted() {
-		window.addEventListener('keydown',this.handleHotkeys);
-	},
-	unmounted() {
-		window.removeEventListener('keydown',this.handleHotkeys);
-	},
 	methods:{
 		// externals
 		copyValueDialog,
+		dialogDeleteAsk,
 		
 		// actions
-		handleHotkeys(e) {
-			if(e.key === 'Escape' && this.showContent)
+		close() {
+			if(this.showContent) {
+				this.$store.commit('keyDownHandlerDel',this.set);
+				this.$store.commit('keyDownHandlerDel',this.nextLanguage);
+				this.$store.commit('keyDownHandlerDel',this.close);
+				this.$store.commit('keyDownHandlerWake');
 				this.showContent = false;
-			
-			if(e.ctrlKey && e.key === 's') {
-				e.preventDefault();
-				
-				if(this.hasChanges)
-					this.set();
 			}
-			
-			if(e.ctrlKey && e.key === 'q') {
-				e.preventDefault();
-				
-				this.$emit('nextLanguage');
+		},
+		open() {
+			if(!this.showContent) {
+				this.$store.commit('keyDownHandlerSleep');
+				this.$store.commit('keyDownHandlerAdd',{fnc:this.set,key:'s',keyCtrl:true});
+				this.$store.commit('keyDownHandlerAdd',{fnc:this.nextLanguage,key:'q',keyCtrl:true});
+				this.$store.commit('keyDownHandlerAdd',{fnc:this.close,key:'Escape'});
+				this.showContent = true;
 			}
+		},
+		nextLanguage() {
+			this.$emit('nextLanguage');
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		del() {
-			ws.send('article','del',{id:this.article.id},true).then(
+			ws.send('article','del',this.article.id,true).then(
 				() => this.$root.schemaReload(this.module.id),
 				this.$root.genericError
 			);
 		},
 		set() {
+			if(!this.hasChanges)
+				return;
+
 			ws.send('article','set',{
 				id:this.article.id,
 				moduleId:this.module.id,
@@ -191,13 +169,9 @@ let MyBuilderArticlesItem = {
 				captions:this.captions
 			},true).then(
 				() => {
-					if(this.isNew) {
-						this.name     = '';
-						this.captions = {
-							articleTitle:{},
-							articleBody:{}
-						};
-					}
+					if(this.isNew)
+						this.$emit('reset-new');
+					
 					this.$root.schemaReload(this.module.id);
 				},
 				this.$root.genericError
@@ -206,7 +180,7 @@ let MyBuilderArticlesItem = {
 	}
 };
 
-let MyBuilderArticles = {
+export default {
 	name:'my-builder-articles',
 	components:{
 		MyArticles,
@@ -235,10 +209,15 @@ let MyBuilderArticles = {
 					
 					<!-- new article -->
 					<my-builder-articles-item
+						v-if="articleNew !== false"
 						@nextLanguage="$emit('nextLanguage')"
-						:builderLanguage="builderLanguage"
-						:module="module"
-						:readonly="readonly"
+						@reset-new="resetArticleNew"
+						:article="articleNew"
+						:builderLanguage
+						:isNew="true"
+						:key="articleNew.id"
+						:module
+						:readonly
 					/>
 					
 					<!-- existing articles -->
@@ -246,10 +225,11 @@ let MyBuilderArticles = {
 						v-for="art in module.articles"
 						@nextLanguage="$emit('nextLanguage')"
 						:article="art"
-						:builderLanguage="builderLanguage"
+						:builderLanguage
+						:isNew="false"
 						:key="art.id"
-						:module="module"
-						:readonly="readonly"
+						:module
+						:readonly
 					/>
 				</table>
 			</div>
@@ -327,6 +307,7 @@ let MyBuilderArticles = {
 							
 							<my-button image="cancel.png"
 								@trigger="articleRemove(element)"
+								:active="!readonly"
 								:naked="true"
 							/>
 						</div>
@@ -353,6 +334,7 @@ let MyBuilderArticles = {
 		readonly:       { type:Boolean, required:true }
 	},
 	mounted() {
+		this.resetArticleNew();
 		this.$store.commit('keyDownHandlerAdd',{fnc:this.assign,key:'s',keyCtrl:true});
 	},
 	unmounted() {
@@ -366,6 +348,7 @@ let MyBuilderArticles = {
 			formIdAssignTo:null,   // form to add article to (if target is 'form')
 			
 			// states
+			articleNew:false,
 			articleIdsAssigned:[],
 			articleIdsAssignedOrg:[], // to compare for changes
 			showPreview:false
@@ -375,7 +358,7 @@ let MyBuilderArticles = {
 		hasChanges:(s) => JSON.stringify(s.articleIdsAssigned) !== JSON.stringify(s.articleIdsAssignedOrg),
 		
 		// stores
-		module:      (s) => typeof s.moduleIdMap[s.id] === 'undefined' ? false : s.moduleIdMap[s.id],
+		module:      (s) => s.moduleIdMap[s.id] === undefined ? false : s.moduleIdMap[s.id],
 		moduleIdMap: (s) => s.$store.getters['schema/moduleIdMap'],
 		formIdMap:   (s) => s.$store.getters['schema/formIdMap'],
 		articleIdMap:(s) => s.$store.getters['schema/articleIdMap'],
@@ -391,9 +374,11 @@ let MyBuilderArticles = {
 	methods:{
 		// externals
 		getDependentModules,
+		getTemplateArticle,
 		
 		// states
 		reset() {
+			this.resetArticleNew();
 			this.articleIdsAssigned    = [];
 			this.articleIdsAssignedOrg = [];
 			
@@ -408,6 +393,9 @@ let MyBuilderArticles = {
 				this.articleIdsAssignedOrg = JSON.parse(JSON.stringify(f.articleIdsHelp));
 				return;
 			}
+		},
+		resetArticleNew() {
+			this.articleNew = this.getTemplateArticle(this.module.id);
 		},
 		
 		// actions

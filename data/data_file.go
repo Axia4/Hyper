@@ -35,14 +35,14 @@ var (
 
 func MayAccessFile(loginId int64, attributeId uuid.UUID) error {
 	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
+	atr, exists := cache.AttributeIdMap[attributeId]
+	cache.Schema_mx.RUnlock()
 
-	attribute, exists := cache.AttributeIdMap[attributeId]
-	if !exists || !schema.IsContentFiles(attribute.Content) {
+	if !exists || !schema.IsContentFiles(atr.Content) {
 		return errors.New("not a file attribute")
 	}
 
-	if !authorizedAttribute(loginId, attributeId, types.AccessRead) {
+	if !authorizedAttributes(loginId, []uuid.UUID{attributeId}, types.AccessRead) {
 		return errors.New(handler.ErrUnauthorized)
 	}
 	return nil
@@ -62,19 +62,19 @@ func GetFilePathVersion(fileId uuid.UUID, version int64) string {
 }
 
 // attempts to store file upload
-func SetFile(ctx context.Context, loginId int64, attributeId uuid.UUID, fileId uuid.UUID,
-	fileSourcePart *multipart.Part, fileSourcePath pgtype.Text, fileSourceString pgtype.Text, isNewFile bool) error {
+func SetFile(ctx context.Context, loginId int64, attributeId, fileId uuid.UUID, fileSourcePart *multipart.Part,
+	fileSourcePath, fileSourceString pgtype.Text, isNewFile bool) error {
 
 	cache.Schema_mx.RLock()
 	attribute, exists := cache.AttributeIdMap[attributeId]
-	if !exists || !schema.IsContentFiles(attribute.Content) {
-		cache.Schema_mx.RUnlock()
-		return handler.ErrSchemaUnknownAttribute(attributeId)
-	}
 	cache.Schema_mx.RUnlock()
 
+	if !exists || !schema.IsContentFiles(attribute.Content) {
+		return handler.ErrSchemaUnknownAttribute(attributeId)
+	}
+
 	// check for access permissions, unless it´s a system task (login ID = -1)
-	if loginId != -1 && !authorizedAttribute(loginId, attributeId, types.AccessWrite) {
+	if loginId != -1 && !authorizedAttributes(loginId, []uuid.UUID{attributeId}, types.AccessWrite) {
 		return errors.New(handler.ErrUnauthorized)
 	}
 
@@ -92,9 +92,7 @@ func SetFile(ctx context.Context, loginId int64, attributeId uuid.UUID, fileId u
 			WHERE v.file_id = $1
 			ORDER BY v.version DESC
 			LIMIT 1
-		`, schema.GetFilesTableName(attributeId)),
-			fileId).Scan(&version, &recordIds); err != nil {
-
+		`, schema.GetFilesTableName(attributeId)), fileId).Scan(&version, &recordIds); err != nil {
 			return err
 		}
 	}
@@ -180,8 +178,7 @@ func SetFile(ctx context.Context, loginId int64, attributeId uuid.UUID, fileId u
 	}
 
 	// create/update thumbnail - failure should not block progress
-	data_image.CreateThumbnail(fileId, filepath.Ext(fileName), filePath,
-		GetFilePathThumb(fileId), false)
+	data_image.CreateThumbnail(fileId, filepath.Ext(fileName), filePath, GetFilePathThumb(fileId), false)
 
 	// store file meta data in database
 	tx, err := db.Pool.Begin(ctx)
@@ -199,15 +196,12 @@ func SetFile(ctx context.Context, loginId int64, attributeId uuid.UUID, fileId u
 }
 
 // stores database changes for uploaded/updated files
-func FileApplyVersion_tx(ctx context.Context, tx pgx.Tx, isNewFile bool, attributeId uuid.UUID,
-	relationId uuid.UUID, fileId uuid.UUID, fileHash string, fileName string,
-	fileSizeKb int64, fileVersion int64, recordIds []int64, loginId int64) error {
+func FileApplyVersion_tx(ctx context.Context, tx pgx.Tx, isNewFile bool, attributeId, relationId, fileId uuid.UUID,
+	fileHash, fileName string, fileSizeKb, fileVersion int64, recordIds []int64, loginId int64) error {
 
 	if isNewFile {
 		// store file reference
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO instance.file (id, ref_counter) VALUES ($1,0)
-		`, fileId); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO instance.file (id, ref_counter) VALUES ($1,0)`, fileId); err != nil {
 			return err
 		}
 	}
@@ -218,8 +212,7 @@ func FileApplyVersion_tx(ctx context.Context, tx pgx.Tx, isNewFile bool, attribu
 		Valid: loginId != -1,
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO instance.file_version (
-			file_id,version,login_id,hash,size_kb,date_change)
+		INSERT INTO instance.file_version (file_id,version,login_id,hash,size_kb,date_change)
 		VALUES ($1,$2,$3,$4,$5,$6)
 	`, fileId, fileVersion, loginNull, fileHash, fileSizeKb, tools.GetTimeUnix()); err != nil {
 		return err
@@ -233,11 +226,11 @@ func FileApplyVersion_tx(ctx context.Context, tx pgx.Tx, isNewFile bool, attribu
 
 	cache.Schema_mx.RLock()
 	relation, exists := cache.RelationIdMap[relationId]
+	cache.Schema_mx.RUnlock()
+
 	if !exists {
-		cache.Schema_mx.RUnlock()
 		return handler.ErrSchemaUnknownRelation(relationId)
 	}
-	cache.Schema_mx.RUnlock()
 
 	if !relationUsesLogging(relation.RetentionCount, relation.RetentionDays) {
 		return nil
@@ -259,13 +252,10 @@ func FileApplyVersion_tx(ctx context.Context, tx pgx.Tx, isNewFile bool, attribu
 		},
 	}
 	logAttributeFileIndexes := []int{0}
-	logValuesOld := []interface{}{nil}
+	logValuesOld := []any{nil}
 
 	for _, recordId := range recordIds {
-		if err := setLog_tx(ctx, tx, relationId, logAttributes,
-			logAttributeFileIndexes, false, logValuesOld, recordId,
-			loginId); err != nil {
-
+		if err := setLog_tx(ctx, tx, relationId, logAttributes, logAttributeFileIndexes, false, logValuesOld, recordId, loginId); err != nil {
 			return err
 		}
 	}
@@ -273,9 +263,8 @@ func FileApplyVersion_tx(ctx context.Context, tx pgx.Tx, isNewFile bool, attribu
 }
 
 // updates file record assignment or deletion state based on file attribute changes
-func FilesApplyAttributChanges_tx(ctx context.Context,
-	tx pgx.Tx, recordId int64, attributeId uuid.UUID,
-	fileIdMapChange map[uuid.UUID]types.DataSetFileChange) error {
+func FilesApplyAttributChanges_tx(ctx context.Context, tx pgx.Tx, recordId int64,
+	attributeId uuid.UUID, fileIdMapChange map[uuid.UUID]types.DataSetFileChange) error {
 
 	tNameR := schema.GetFilesTableName(attributeId)
 
@@ -373,24 +362,19 @@ func FilesApplyAttributChanges_tx(ctx context.Context,
 	return nil
 }
 
-func FilesAssignToRecord_tx(ctx context.Context, tx pgx.Tx,
-	attributeId uuid.UUID, fileIds []uuid.UUID, recordId int64) error {
-
+func FilesAssignToRecord_tx(ctx context.Context, tx pgx.Tx, attributeId uuid.UUID, fileIds []uuid.UUID, recordId int64) error {
 	for _, fileId := range fileIds {
 		if _, err := tx.Exec(ctx, fmt.Sprintf(`
 			INSERT INTO instance_file."%s" (file_id, record_id, name)
 			VALUES ($1,$2,$3)
-		`, schema.GetFilesTableName(attributeId)), fileId,
-			recordId, newFileUnnamed); err != nil {
-
+		`, schema.GetFilesTableName(attributeId)), fileId, recordId, newFileUnnamed); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func FilesSetDeletedForRecord_tx(ctx context.Context, tx pgx.Tx,
-	attributeId uuid.UUID, fileIds []uuid.UUID, recordId int64) error {
+func FilesSetDeletedForRecord_tx(ctx context.Context, tx pgx.Tx, attributeId uuid.UUID, fileIds []uuid.UUID, recordId int64) error {
 
 	_, err := tx.Exec(ctx, fmt.Sprintf(`
 		UPDATE instance_file."%s"

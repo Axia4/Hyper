@@ -34,6 +34,7 @@ import (
 	"r3/handler/data_download"
 	"r3/handler/data_download_thumb"
 	"r3/handler/data_upload"
+	"r3/handler/doc_download"
 	"r3/handler/icon_upload"
 	"r3/handler/ics_download"
 	"r3/handler/license_upload"
@@ -46,6 +47,7 @@ import (
 	"r3/login"
 	"r3/login/login_session"
 	"r3/scheduler"
+	"r3/spooler/doc_create"
 	"r3/tools"
 	"strings"
 	"sync/atomic"
@@ -61,8 +63,8 @@ var (
 	// overwritten by build parameters
 	appName          string = "Axia"
 	appNameShort     string = "Ax4"
-	appVersion       string = "4.0.1.0"
-	appVersionClient string = "4.0.1.0"
+	appVersion       string = "4.2.1.0"
+	appVersionClient string = "4.2.1.0"
 
 	// start parameters
 	cli struct {
@@ -309,12 +311,6 @@ func (prg *program) Start(svc service.Service) error {
 // execute the application logic
 func (prg *program) execute(svc service.Service) {
 
-	// create required data directories
-	if err := createRequiredDirectories(); err != nil {
-		prg.executeAborted(svc, fmt.Errorf("failed to create required directories, %v", err))
-		return
-	}
-
 	// start embedded database
 	if config.File.Db.Embedded {
 		prg.logger.Infof("start embedded database at '%s'", config.File.Paths.EmbeddedDbData)
@@ -421,7 +417,15 @@ func (prg *program) execute(svc service.Service) {
 	} else {
 		mux.Handle("/", http.FileServer(http.Dir(cli.wwwPath)))
 	}
+
+	fsStaticFont, err := fs.Sub(fs.FS(fsStatic), "www/font")
+	if err != nil {
+		prg.executeAborted(svc, fmt.Errorf("failed to access embedded font directory, %v", err))
+		return
+	}
+
 	handler.SetNoImage(fsStaticNoPic)
+	doc_create.SetFontFs(fsStaticFont)
 
 	mux.HandleFunc("/api/", api.Handler)
 	mux.HandleFunc("/api/auth", api_auth.Handler)
@@ -433,6 +437,7 @@ func (prg *program) execute(svc service.Service) {
 	mux.HandleFunc("/data/download/", data_download.Handler)
 	mux.HandleFunc("/data/download/thumb/", data_download_thumb.Handler)
 	mux.HandleFunc("/data/upload", data_upload.Handler)
+	mux.HandleFunc("/doc/download/", doc_download.Handler)
 	mux.HandleFunc("/icon/upload", icon_upload.Handler)
 	mux.HandleFunc("/ics/download/", ics_download.Handler)
 	mux.HandleFunc("/license/upload", license_upload.Handler)
@@ -570,6 +575,9 @@ func initCaches(ctx context.Context) error {
 	if err := cache.LoadPwaDomainMap_tx(ctx, tx); err != nil {
 		return fmt.Errorf("failed to initialize PWA domain cache, %v", err)
 	}
+	if err := cache.LoadRepos_tx(ctx, tx); err != nil {
+		return fmt.Errorf("failed to initialize repository cache, %v", err)
+	}
 	if err := ldap.UpdateCache_tx(ctx, tx); err != nil {
 		return fmt.Errorf("failed to initialize LDAP cache, %v", err)
 	}
@@ -589,31 +597,6 @@ func initCachesOptional(ctx context.Context) error {
 		return tx.Rollback(ctx)
 	}
 	return tx.Commit(ctx)
-}
-
-// createRequiredDirectories creates all required data directories recursively if they don't exist
-func createRequiredDirectories() error {
-	directories := []string{
-		config.File.Paths.Certificates,
-		config.File.Paths.Files,
-		config.File.Paths.Temp,
-		config.File.Paths.Transfer,
-	}
-	
-	// Add embedded database data path only if embedded DB is enabled
-	//if config.File.Db.Embedded {
-	//	directories = append(directories, config.File.Paths.EmbeddedDbData)
-	//}
-	
-	for _, dir := range directories {
-		if dir == "" {
-			continue
-		}
-		if err := tools.PathCreateIfNotExists(dir, 0700); err != nil {
-			return fmt.Errorf("failed to create directory '%s': %v", dir, err)
-		}
-	}
-	return nil
 }
 
 // properly shuts down application, if execution is aborted prematurely

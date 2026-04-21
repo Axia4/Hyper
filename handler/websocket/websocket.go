@@ -14,6 +14,7 @@ import (
 	"r3/log"
 	"r3/login/login_session"
 	"r3/request"
+	"r3/request/request_login"
 	"r3/types"
 	"strings"
 	"sync"
@@ -173,6 +174,8 @@ func (hub *hubType) start() {
 			var err error = nil
 			jsonMsg := []byte{}      // message back to client
 			singleRecipient := false // message is only sent to single recipient (first valid one)
+			kick := false
+			kickNonAdmin := false
 
 			switch event.Content {
 			case "clientEventsChanged":
@@ -191,6 +194,10 @@ func (hub *hubType) start() {
 			case "keystrokesRequested":
 				jsonMsg, err = prepareUnrequested("keystrokesRequested", event.Payload)
 				singleRecipient = true
+			case "kick":
+				kick = true
+			case "kickNonAdmin":
+				kickNonAdmin = true
 			case "renew":
 				jsonMsg, err = prepareUnrequested("reauthorized", nil)
 			case "schemaLoaded":
@@ -242,11 +249,13 @@ func (hub *hubType) start() {
 
 			for _, client := range clientsSend {
 
-				// disconnect and do not send message if kicked
-				if event.Content == "kick" || (event.Content == "kickNonAdmin" && !client.admin) {
-					clientRemove(client, true)
+				if kick || kickNonAdmin {
+					if kick || (kickNonAdmin && !client.admin) {
+						clientRemove(client, true)
+					}
 					continue
 				}
+
 				go client.write(jsonMsg)
 
 				if singleRecipient {
@@ -354,17 +363,17 @@ func (client *clientType) handleTransaction(reqTransJson json.RawMessage) json.R
 
 		switch req.Action {
 		case "openId": // authentication via Open ID Connect
-			login, err = request.LoginAuthOpenId(ctx, req.Payload)
+			login, err = request_login.AuthOpenId(ctx, req.Payload)
 
 		case "token": // authentication via JSON web token
-			login, err = request.LoginAuthToken(ctx, req.Payload)
+			login, err = request_login.AuthToken(ctx, req.Payload)
 
 		case "tokenFixed": // authentication via fixed token (fat-client only)
-			login, err = request.LoginAuthTokenFixed(ctx, req.Payload)
+			login, err = request_login.AuthTokenFixed(ctx, req.Payload)
 			client.device = types.WebsocketClientDeviceFatClient
 
 		case "user": // authentication via username + password (+ MFA if used)
-			login, err = request.LoginAuthUser(ctx, req.Payload)
+			login, err = request_login.AuthUser(ctx, req.Payload)
 		}
 
 		if err != nil {

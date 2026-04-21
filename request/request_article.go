@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func ArticleAssign_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (interface{}, error) {
+func ArticleAssign_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
 	var req struct {
 		Target     schema.DbEntity `json:"target`
 		TargetId   uuid.UUID       `json:"targetId"`
@@ -23,18 +23,15 @@ func ArticleAssign_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (
 	return nil, article.Assign_tx(ctx, tx, req.Target, req.TargetId, req.ArticleIds)
 }
 
-func ArticleDel_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (interface{}, error) {
-	var req struct {
-		Id uuid.UUID `json:"id"`
-	}
-
+func ArticleDel_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
+	var req uuid.UUID
 	if err := json.Unmarshal(reqJson, &req); err != nil {
 		return nil, err
 	}
-	return nil, article.Del_tx(ctx, tx, req.Id)
+	return nil, article.Del_tx(ctx, tx, req)
 }
 
-func ArticleSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (interface{}, error) {
+func ArticleSet_tx(ctx context.Context, tx pgx.Tx, reqJson json.RawMessage) (any, error) {
 	var req types.Article
 	if err := json.Unmarshal(reqJson, &req); err != nil {
 		return nil, err

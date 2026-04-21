@@ -14,6 +14,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// < 3.12
+func FixMissingZeroRelease(releases []types.Release) []types.Release {
+	if len(releases) == 0 {
+		releases = append(releases, types.Release{
+			Build:       0,
+			BuildApp:    0,
+			DateCreated: 0,
+			Logs:        make([]types.ReleaseLog, 0),
+		})
+	}
+	return releases
+}
+func FixMissingReleaseLogCategories(categories []string) []string {
+	if len(categories) == 0 {
+		categories = append(categories, "Added", "Improved", "Fixed")
+	}
+	return categories
+}
+
 // < 3.11
 // fix missing cost setting
 func FixMissingCost(fnc types.PgFunction) types.PgFunction {

@@ -1,7 +1,9 @@
-import MyBuilderCaption      from './builderCaption.js';
-import MyBuilderIconInput    from './builderIconInput.js';
-import {getFieldMap}         from '../shared/form.js';
-import {copyValueDialog}     from '../shared/generic.js';
+import MyBuilderCaption       from './builderCaption.js';
+import MyBuilderIconInput     from './builderIconInput.js';
+import {getFieldMap}          from '../shared/form.js';
+import {copyValueDialog}      from '../shared/generic.js';
+import {getTemplateAttribute} from '../shared/builderTemplate.js';
+import {dialogDeleteAsk}      from '../shared/dialog.js';
 import {
 	getDependentModules,
 	getItemTitle
@@ -21,9 +23,8 @@ import {
 	isAttributeString,
 	isAttributeUuid
 } from '../shared/attribute.js';
-export {MyBuilderAttribute as default};
 
-let MyBuilderAttribute = {
+export default {
 	name:'my-builder-attribute',
 	components:{
 		MyBuilderCaption,
@@ -231,7 +232,7 @@ let MyBuilderAttribute = {
 							<td>{{ lengthTitle }}</td>
 							<td>
 								<input type="number"
-									@keyup="updateLengths('length',$event.target.value)"
+									@input="updateLengths('length',$event.target)"
 									:disabled="readonly"
 									:value="values.length"
 								/>
@@ -252,14 +253,14 @@ let MyBuilderAttribute = {
 										<tr>
 											<td>
 												<input type="number"
-													@keyup="updateLengths('length',$event.target.value)"
+													@input="updateLengths('length',$event.target)"
 													:disabled="readonly"
 													:value="values.length - values.lengthFract"
 												/>
 											</td>
 											<td>
 												<input type="number"
-													@keyup="updateLengths('lengthFract',$event.target.value)"
+													@input="updateLengths('lengthFract',$event.target)"
 													:disabled="readonly"
 													:value="values.lengthFract"
 												/>
@@ -517,11 +518,13 @@ let MyBuilderAttribute = {
 	methods:{
 		// external
 		copyValueDialog,
+		dialogDeleteAsk,
 		getAttributeContentUse,
 		getAttributeIcon,
 		getDependentModules,
 		getFieldMap,
 		getItemTitle,
+		getTemplateAttribute,
 		isAttributeBoolean,
 		isAttributeFiles,
 		isAttributeFloat,
@@ -552,26 +555,7 @@ let MyBuilderAttribute = {
 		reset() {
 			this.values = this.attributeId !== null
 				? JSON.parse(JSON.stringify(this.attributeIdMap[this.attributeId]))
-				: {
-					id:null,
-					moduleId:this.relation.moduleId,
-					relationId:this.relation.id,
-					relationshipId:null,
-					iconId:null,
-					content:'text',
-					contentUse:'default',
-					length:0,
-					lengthFract:0,
-					name:'',
-					nullable:true,
-					encrypted:false,
-					def:'',
-					onUpdate:'NO ACTION',
-					onDelete:'NO ACTION',
-					captions:{
-						attributeTitle:{}
-					}
-				};
+				: this.getTemplateAttribute(this.relation.moduleId,this.relation.id);
 			
 			this.resetOrg();
 			
@@ -593,9 +577,14 @@ let MyBuilderAttribute = {
 				default:         this.values.def = '';                                 break;
 			}
 		},
-		updateLengths(name,v) {
-			var newValue = v === '' ? 0  : parseInt(v);
+		updateLengths(name,target) {
+			var newValue = target.value === '' ? 0  : parseInt(target.value);
 			var oldValue = this.values[name];
+
+			if(newValue < 0) {
+				newValue = 0;
+				target.value = 0;
+			}
 
 			switch(name) {
 				case 'length':
@@ -613,22 +602,8 @@ let MyBuilderAttribute = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
 		delCheck() {
-			ws.send('attribute','delCheck',{id:this.attributeId},true).then(
+			ws.send('attribute','delCheck',this.attributeId,true).then(
 				res => {
 					const noDependencies =
 						res.payload.apiIds.length         === 0 &&
@@ -639,7 +614,7 @@ let MyBuilderAttribute = {
 						res.payload.fields.length         === 0;
 					
 					if(noDependencies)
-						return this.delAsk();
+						return this.dialogDeleteAsk(this.del,this.capApp.dialog.delete);
 					
 					// display open dependencies
 					let dependencies = [];
@@ -698,7 +673,7 @@ let MyBuilderAttribute = {
 			);
 		},
 		del() {
-			ws.send('attribute','del',{id:this.attributeId},true).then(
+			ws.send('attribute','del',this.attributeId,true).then(
 				() => {
 					this.$root.schemaReload(this.module.id);
 					this.$emit('close');

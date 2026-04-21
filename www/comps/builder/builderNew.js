@@ -1,14 +1,21 @@
-import {getQueryTemplate} from '../shared/query.js';
-import {getNilUuid}       from '../shared/generic.js';
+import {getDependentModules} from '../shared/builder.js';
+import MyBuilderFormInput    from './builderFormInput.js';
 import {
-	getTemplateArgs,
-	getTemplateFnc,
-	getTemplateReturn
-} from '../shared/templates.js';
-import MyBuilderFormInput from './builderFormInput.js';
-export {MyBuilderNew as default};
+	getTemplateApi,
+	getTemplateCollection,
+	getTemplateDoc,
+	getTemplateForm,
+	getTemplateJsFunction,
+	getTemplateModule,
+	getTemplatePgFunction,
+	getTemplateRelation,
+	getTemplateRole,
+	getTemplateSearchBar,
+	getTemplateVariable,
+	getTemplateWidget
+} from '../shared/builderTemplate.js';
 
-let MyBuilderNew = {
+export default {
 	name:'my-builder-new',
 	components:{ MyBuilderFormInput },
 	template:`<div class="app-sub-window under-header" @mousedown.self="$emit('close')">
@@ -40,6 +47,23 @@ let MyBuilderNew = {
 				<!-- additional options -->
 				<div class="options" v-if="showOptions">
 					<h2>{{ capApp.options }}</h2>
+					
+					<!-- doc: duplicate document -->
+					<template v-if="entity === 'doc'">
+						<div class="row centered gap">
+							<span>{{ capApp.docIdDuplicate }}</span>
+							<select v-model="inputs.docIdDuplicate">
+								<option value="">-</option>
+								<option v-for="d in module.docs" :value="d.id">{{ d.name }}</option>
+								<optgroup
+									v-for="mod in getDependentModules(module).filter(v => v.id !== module.id && v.docs.length !== 0)"
+									:label="mod.name"
+								>
+									<option v-for="d in mod.docs" :value="d.id">{{ d.name }}</option>
+								</optgroup>
+							</select>
+						</div>
+					</template>
 					
 					<!-- form: duplicate form -->
 					<template v-if="entity === 'form'">
@@ -87,6 +111,8 @@ let MyBuilderNew = {
 								<option value="restAuthRequest">{{ capApp.template.restAuthRequest }}</option>
 								<option value="restAuthResponse">{{ capApp.template.restAuthResponse }}</option>
 								<option value="restDataResponse">{{ capApp.template.restDataResponse }}</option>
+								<option value="restFileUploadToREI3">{{ capApp.template.restFileUploadToREI3 }}</option>
+								<option value="restFileAttachViaREI3API">{{ capApp.template.restFileAttachViaREI3API }}</option>
 							</select>
 						</div>
 						<hr />
@@ -122,9 +148,10 @@ let MyBuilderNew = {
 		</div>
 	</div>`,
 	props:{
-		entity:  { type:String, required:true },
-		moduleId:{ type:String, required:true },
-		presets: { type:Object, required:true } // preset values for inputs
+		builderLanguage:{ type:String, required:true },
+		entity:         { type:String, required:true },
+		moduleId:       { type:String, required:true },
+		presets:        { type:Object, required:true } // preset values for inputs
 	},
 	emits:['close'],
 	data() {
@@ -132,6 +159,9 @@ let MyBuilderNew = {
 			inputs:{
 				// all
 				name:'',
+
+				// doc
+				docIdDuplicate:'',
 				
 				// form
 				formIdDuplicate:null,
@@ -153,6 +183,7 @@ let MyBuilderNew = {
 			switch(s.entity) {
 				case 'api':        return 60; break;
 				case 'collection': return 64; break;
+				case 'doc':        return 64; break;
 				case 'form':       return 64; break;
 				case 'jsFunction': return 64; break;
 				case 'module':     return 60; break;
@@ -174,6 +205,7 @@ let MyBuilderNew = {
 				case 'module':     searchList = s.modules;            break;
 				case 'api':        searchList = s.module.apis;        break;
 				case 'collection': searchList = s.module.collections; break;
+				case 'doc':        searchList = s.module.docs;        break;
 				case 'form':       searchList = s.module.forms;       break;
 				case 'jsFunction': searchList = s.module.jsFunctions; break;
 				case 'pgFunction': searchList = s.module.pgFunctions; break;
@@ -203,6 +235,7 @@ let MyBuilderNew = {
 			switch(s.entity) {
 				case 'api':        return s.capApp.api;        break;
 				case 'collection': return s.capApp.collection; break;
+				case 'doc':        return s.capApp.doc;        break;
 				case 'form':       return s.capApp.form;       break;
 				case 'jsFunction': return s.capApp.jsFunction; break;
 				case 'module':     return s.capApp.module;     break;
@@ -219,6 +252,7 @@ let MyBuilderNew = {
 			switch(s.entity) {
 				case 'api':        return 'images/api.png';            break;
 				case 'collection': return 'images/tray.png';           break;
+				case 'doc':        return 'images/document.png';       break;
 				case 'form':       return 'images/fileText.png';       break;
 				case 'jsFunction': return 'images/codeScreen.png';     break;
 				case 'module':     return 'images/module.png';         break;
@@ -235,7 +269,7 @@ let MyBuilderNew = {
 		// simple
 		canSave:    (s) => s.inputs.name !== '' && !s.nameTaken && !s.nameTooLong,
 		nameTooLong:(s) => s.inputs.name !== '' && s.inputs.name.length > s.nameMaxLength,
-		showOptions:(s) => ['form','jsFunction','pgFunction','relation','variable'].includes(s.entity),
+		showOptions:(s) => ['doc','form','jsFunction','pgFunction','relation','variable'].includes(s.entity),
 		
 		// stores
 		module:     (s) => s.moduleIdMap[s.moduleId],
@@ -262,11 +296,19 @@ let MyBuilderNew = {
 	},
 	methods:{
 		// externals
-		getNilUuid,
-		getQueryTemplate,
-		getTemplateArgs,
-		getTemplateFnc,
-		getTemplateReturn,
+		getDependentModules,
+		getTemplateApi,
+		getTemplateCollection,
+		getTemplateDoc,
+		getTemplateForm,
+		getTemplateJsFunction,
+		getTemplateModule,
+		getTemplatePgFunction,
+		getTemplateRelation,
+		getTemplateRole,
+		getTemplateSearchBar,
+		getTemplateVariable,
+		getTemplateWidget,
 		
 		// actions
 		close() { this.$emit('close'); },
@@ -279,33 +321,28 @@ let MyBuilderNew = {
 			let request;
 			let dependencyCheck = false;
 			switch(this.entity) {
-				case 'api':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						name:this.inputs.name,
-						comment:null,
-						columns:[],
-						query:this.getQueryTemplate(),
-						hasDelete:false,
-						hasGet:true,
-						hasPost:false,
-						limitDef:100,
-						limitMax:1000,
-						verboseDef:true,
-						version:1
-					};
-				break;
-				case 'collection':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						iconId:null,
-						name:this.inputs.name,
-						columns:[],
-						query:this.getQueryTemplate(),
-						inHeader:[]
-					};
+				case 'api':	       request = this.getTemplateApi(this.module.id,this.inputs.name); break;
+				case 'collection': request = this.getTemplateCollection(this.module.id,this.inputs.name); break;
+				case 'jsFunction': request = this.getTemplateJsFunction(this.moduleId,this.inputs.formId,this.inputs.name); break;
+				case 'module':     request = this.getTemplateModule(this.inputs.name); break;
+				case 'pgFunction': request = this.getTemplatePgFunction(this.moduleId,this.inputs.name,this.inputs.template,this.inputs.isTrigger); break;
+				case 'relation':   request = this.getTemplateRelation(this.module.id,this.inputs.name,this.inputs.encryption); break;
+				case 'role':       request = this.getTemplateRole(this.moduleId,this.inputs.name); break;
+				case 'searchBar':  request = this.getTemplateSearchBar(this.moduleId,this.inputs.name); break;
+				case 'variable':   request = this.getTemplateVariable(this.moduleId,this.inputs.formId,this.inputs.name); break;
+				case 'widget':     request = this.getTemplateWidget(this.moduleId,this.inputs.name); break;
+				case 'doc':        
+					if(this.inputs.docIdDuplicate !== '') {
+						action = 'copy';
+						request = {
+							id:this.inputs.docIdDuplicate,
+							moduleId:this.moduleId,
+							newName:this.inputs.name
+						};
+						dependencyCheck = true;
+					} else {
+						request = this.getTemplateDoc(this.module.id,this.builderLanguage,this.inputs.name);
+					}
 				break;
 				case 'form':
 					if(this.inputs.formIdDuplicate !== null) {
@@ -317,145 +354,8 @@ let MyBuilderNew = {
 						};
 						dependencyCheck = true;
 					} else {
-						request = {
-							id:this.getNilUuid(),
-							moduleId:this.moduleId,
-							fieldIdFocus:null,
-							presetIdOpen:null,
-							iconId:null,
-							name:this.inputs.name,
-							noDataActions:false,
-							query:this.getQueryTemplate(),
-							fields:[],
-							functions:[],
-							states:[],
-							actions:[],
-							articleIdsHelp:[],
-							captions:{
-								formTitle:{}
-							}
-						};
+						request = this.getTemplateForm(this.moduleId,this.inputs.name);
 					}
-				break;
-				case 'jsFunction':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						formId:this.inputs.formId,
-						name:this.inputs.name,
-						codeArgs:'',
-						codeFunction:'',
-						codeReturns:'',
-						isClientEventExec:false,
-						captions:{
-							jsFunctionTitle:{},
-							jsFunctionDesc:{}
-						}
-					};
-				break;
-				case 'module':
-					request = {
-						id:this.getNilUuid(),
-						parentId:null,
-						formId:null,
-						iconId:null,
-						name:this.inputs.name,
-						color1:'217A4D',
-						position:0,
-						releaseBuild:0,
-						releaseBuildApp:0,
-						releaseDate:0,
-						languageMain:'en_us',
-						languages:['en_us'],
-						dependsOn:[],
-						startForms:[],
-						articleIdsHelp:[],
-						captions:{
-							moduleTitle:{}
-						}
-					};
-				break;
-				case 'pgFunction':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						name:this.inputs.name,
-						codeArgs:this.getTemplateArgs(this.inputs.template),
-						codeFunction:this.getTemplateFnc(this.inputs.template,this.inputs.isTrigger),
-						codeReturns:this.getTemplateReturn(this.inputs.isTrigger),
-						isFrontendExec:false,
-						isLoginSync:this.inputs.template === 'loginSync',
-						isTrigger:this.inputs.isTrigger,
-						volatility:'VOLATILE',
-						schedules:[],
-						captions:{
-							pgFunctionTitle:{},
-							pgFunctionDesc:{}
-						}
-					};
-				break;
-				case 'relation':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						name:this.inputs.name,
-						comment:null,
-						encryption:this.inputs.encryption,
-						retentionCount:null,
-						retentionDays:null,
-						policies:[]
-					};
-				break;
-				case 'role':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						content:'user',
-						name:this.inputs.name,
-						assignable:true,
-						captions:{},
-						childrenIds:[],
-						accessApis:{},
-						accessAttributes:{},
-						accessClientEvents:{},
-						accessCollections:{},
-						accessMenus:{},
-						accessRelations:{}
-					};
-				break;
-				case 'searchBar':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						iconId:null,
-						name:this.inputs.name,
-						columns:[],
-						query:this.getQueryTemplate(),
-						openForm:null,
-						captions:{
-							searchBarTitle:{}
-						}
-					};
-				break;
-				case 'variable':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						formId:this.inputs.formId,
-						name:this.inputs.name,
-						comment:null,
-						content:'text',
-						contentUse:'default'
-					};
-				break;
-				case 'widget':
-					request = {
-						id:this.getNilUuid(),
-						moduleId:this.moduleId,
-						formId:null,
-						size:1,
-						name:this.inputs.name
-					};
 				break;
 				default: return; break;
 			}
@@ -467,10 +367,8 @@ let MyBuilderNew = {
 			
 			ws.sendMultiple(requests,true).then(
 				res => {
-					if(this.entity === 'module')
-						this.$root.schemaReload(res[0].payload);
-					else
-						this.$root.schemaReload(this.moduleId);
+					if(this.entity === 'module') this.$root.schemaReload(res[0].payload);
+					else                         this.$root.schemaReload(this.moduleId);
 					
 					this.$emit('close');
 				},

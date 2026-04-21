@@ -9,9 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type (
-	DbEntity string
-)
+type DbEntity string
 
 const (
 	// DB relations accessed throughout the schema (central reference for dynamic queries)
@@ -22,6 +20,15 @@ const (
 	DbCollection            DbEntity = "collection"
 	DbCollectionConsumer    DbEntity = "collection_consumer"
 	DbColumn                DbEntity = "column"
+	DbDoc                   DbEntity = "doc"
+	DbDocColumn             DbEntity = "doc_column"
+	DbDocContextBody        DbEntity = "body"
+	DbDocContextDefault     DbEntity = "default"
+	DbDocContextFooter      DbEntity = "footer"
+	DbDocContextHeader      DbEntity = "header"
+	DbDocField              DbEntity = "doc_field"
+	DbDocPage               DbEntity = "doc_page"
+	DbDocState              DbEntity = "doc_state"
 	DbField                 DbEntity = "field"
 	DbFieldButton           DbEntity = "field_button"
 	DbFieldCalendar         DbEntity = "field_calendar"
@@ -71,16 +78,30 @@ var (
 		DbField,
 		DbSearchBar,
 	}
+	DbAssignedDocSet = []DbEntity{
+		DbDoc,
+		DbDocColumn,
+		DbDocField,
+		DbDocPage,
+	}
+	DbAssignedOpenDoc = []DbEntity{
+		DbFormAction,
+		DbField,
+	}
 	DbAssignedOpenForm = []DbEntity{
 		DbColumn,
 		DbCollectionConsumer,
 		DbField,
+		DbFormAction,
 		DbSearchBar,
 	}
 	DbAssignedQuery = []DbEntity{
 		DbApi,
 		DbCollection,
 		DbColumn,
+		DbDoc,
+		DbDocColumn,
+		DbDocField,
 		DbField,
 		DbForm,
 		DbQueryFilterQuery,
@@ -113,6 +134,14 @@ var (
 		DbRelation,
 	}
 
+	// elements valid as document context
+	DbDocContextsValid = []DbEntity{
+		DbDocContextBody,
+		DbDocContextDefault,
+		DbDocContextFooter,
+		DbDocContextHeader,
+	}
+
 	// element transfer delete check
 	DbTransferDeleteField = []DbEntity{
 		DbColumn,
@@ -126,6 +155,7 @@ var (
 		DbArticle,
 		DbClientEvent,
 		DbCollection,
+		DbDoc,
 		DbForm,
 		DbIcon,
 		DbJsFunction,
@@ -147,23 +177,10 @@ var (
 	}
 )
 
-// checks the given ID
-// if nil, it is overwritten with a new one
-// if not nil, it is checked whether the ID is known already
-// returns whether the ID was already known
-func CheckCreateId_tx(ctx context.Context, tx pgx.Tx, id *uuid.UUID, entity DbEntity, pkName string) (bool, error) {
-
-	var err error
-	if *id == uuid.Nil {
-		*id, err = uuid.NewV4()
-		return false, err
-	}
-
+// checks whether a record exists for the given primary ID
+func CheckId_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID, entity DbEntity, pkName string) (bool, error) {
 	var known bool
-	err = tx.QueryRow(ctx, fmt.Sprintf(`
-		SELECT EXISTS(SELECT * FROM app.%s WHERE "%s" = $1)
-	`, entity, pkName), id).Scan(&known)
-
+	err := tx.QueryRow(ctx, fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM app.%s WHERE "%s" = $1)`, entity, pkName), id).Scan(&known)
 	return known, err
 }
 
@@ -233,6 +250,33 @@ func ValidateDependency_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) e
 			name1.String)
 	}
 
+	// check button fields, form actions with external document access
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*), STRING_AGG(COALESCE(ff.name, af.name), ', '), STRING_AGG(d.name, ', ')
+		FROM       app.open_doc    AS o
+		INNER JOIN app.doc         AS d  ON d.id  = o.doc_id_open
+		LEFT JOIN  app.field       AS f  ON f.id  = o.field_id
+		LEFT JOIN  app.form        AS ff ON ff.id = f.form_id
+		LEFT JOIN  app.form_action AS a  ON a.id  = o.form_action_id
+		LEFT JOIN  app.form        AS af ON af.id = a.form_id
+		WHERE (ff.module_id = $1 OR af.module_id = $1)
+
+		-- dependency
+		AND d.module_id <> $1
+		AND d.module_id NOT IN (
+			SELECT module_id_on
+			FROM app.module_depends
+			WHERE module_id = $1
+		)
+	`, moduleId).Scan(&cnt, &name1, &name2); err != nil {
+		return err
+	}
+
+	if cnt != 0 {
+		return fmt.Errorf("dependency check failed, field(s) & form action(s) on form(s) '%s' opening document(s) '%s' from independent module(s)",
+			name1.String, name2.String)
+	}
+
 	// check attribute relationships with external relations
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(*), STRING_AGG(CONCAT(r.name, '.', a.name), ', ')
@@ -269,6 +313,7 @@ func ValidateDependency_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) e
 			CASE
 				WHEN q.api_id        IS NOT NULL THEN FORMAT('API "%s"', a.name)
 				WHEN q.collection_id IS NOT NULL THEN FORMAT('collection "%s"', c.name)
+				WHEN q.doc_id        IS NOT NULL THEN FORMAT('PDF "%s"', d.name)
 				WHEN q.field_id      IS NOT NULL THEN FORMAT('field in form "%s"', lf.name)
 				WHEN q.form_id       IS NOT NULL THEN FORMAT('form "%s"', f.name)
 				WHEN q.search_bar_id IS NOT NULL THEN FORMAT('search bar "%s"', s.name)
@@ -277,6 +322,7 @@ func ValidateDependency_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) e
 		FROM app.query AS q
 		LEFT JOIN app.api        AS a  ON a.id  = q.api_id        -- query for API
 		LEFT JOIN app.collection AS c  ON c.id  = q.collection_id -- query for collection
+		LEFT JOIN app.doc        AS d  ON d.id  = q.doc_id        -- query for document
 		LEFT JOIN app.form       AS f  ON f.id  = q.form_id       -- query for form
 		LEFT JOIN app.field      AS l  ON l.id  = q.field_id      -- query for list/data field
 		LEFT JOIN app.form       AS lf ON lf.id = l.form_id       -- form of list/data field
@@ -288,6 +334,7 @@ func ValidateDependency_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) e
 				OR lf.module_id = m.id
 				OR a.module_id  = m.id
 				OR c.module_id  = m.id
+				OR d.module_id  = m.id
 				OR s.module_id  = m.id
 			)
 		
@@ -539,25 +586,36 @@ func ValidateDependency_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID) e
 			SELECT icon_id
 			FROM app.search_bar
 			WHERE module_id = $6
+
+			UNION
+
+			-- attribute icons
+			SELECT icon_id
+			FROM app.attribute
+			WHERE relation_id IN (
+				SELECT id
+				FROM app.relation
+				WHERE module_id = $7
+			)
 		)
 		
 		-- dependency
 		AND id NOT IN (
 			SELECT id
 			FROM app.icon
-			WHERE module_id = $7
+			WHERE module_id = $8
 			OR module_id IN (
 				SELECT module_id_on
 				FROM app.module_depends
-				WHERE module_id = $8
+				WHERE module_id = $9
 			)
 		)
-	`, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId).Scan(&cnt); err != nil {
+	`, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId, moduleId).Scan(&cnt); err != nil {
 		return err
 	}
 
 	if cnt != 0 {
-		return fmt.Errorf("dependency check failed, accessing %d icons(s) from independent module(s), check application, collection, search bar, menu & field icons", cnt)
+		return fmt.Errorf("dependency check failed, accessing %d icons(s) from independent module(s), check application, attribute, collection, search bar, menu, form & field icons", cnt)
 	}
 
 	// check PG function access to external pgFunctions/modules/relations/attributes

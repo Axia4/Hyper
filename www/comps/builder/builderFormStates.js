@@ -1,47 +1,45 @@
 import {isAttributeRelationship} from '../shared/attribute.js';
 import {getFieldTitle}           from '../shared/field.js';
-import {getNilUuid}              from '../shared/generic.js';
-export {MyBuilderFormStates as default};
+import {getTemplateFormState}    from '../shared/builderTemplate.js';
 
-let MyBuilderFormStateEffect = {
+const MyBuilderFormStateEffect = {
 	name:'my-builder-form-state-effect',
 	template:`<div class="builder-form-state-effect row gap" :style="'order:'+order">
 		
 		<!-- target -->
-		<select class="long" v-model="target">
+		<select class="long" v-model="target" :disabled="readonly">
 			<option value="">{{ capGen.form }}</option>
-			<optgroup :label="capApp.option.effectFormAction">
+			<optgroup :label="capGen.action">
 				<option
 					v-for="(ref,id) in entityIdMapRef.formAction"
 					:value="'A'+id"
 				>A{{ ref }}</option>
 			</optgroup>
-			<optgroup :label="capApp.option.effectTab">
+			<optgroup :label="capGen.tab">
 				<option
 					v-for="(ref,id) in entityIdMapRef.tab"
 					:value="'T'+id"
 				>T{{ ref }}</option>
 			</optgroup>
-			<optgroup :label="capApp.option.effectField">
+			<optgroup :label="capGen.field">
 				<option
 					v-for="(ref,fieldId) in entityIdMapRef.field"
-					:disabled="fieldId.startsWith('new')"
 					:value="'F'+fieldId"
 				>{{ getTitleEffect('F', ref, fieldId) }}</option>
 			</optgroup>
 		</select>
 		
 		<!-- new state -->
-		<select class="short" v-model="newState" v-if="!isForm">
-			<option value="hidden">{{ capApp.stateHidden }}</option>
-			<option value="default">{{ capApp.stateDefault }}</option>
-			<option value="readonly" :disabled="!isData && !isVariable && !isButton && !isAction">{{ capApp.stateReadonly }}</option>
-			<option value="optional" :disabled="!isData && !isVariable">{{ capApp.stateOptional }}</option>
-			<option value="required" :disabled="!isData && !isVariable">{{ capApp.stateRequired }}</option>
+		<select class="short" v-model="newState" v-if="!isForm" :disabled="readonly">
+			<option value="hidden">{{ capGen.hidden }}</option>
+			<option value="default">{{ capGen.default }}</option>
+			<option value="readonly" :disabled="!isData && !isVariable && !isButton && !isAction">{{ capGen.readonly }}</option>
+			<option value="optional" :disabled="!isData && !isVariable">{{ capGen.optional }}</option>
+			<option value="required" :disabled="!isData && !isVariable">{{ capGen.required }}</option>
 		</select>
 		
 		<!-- new data -->
-		<select class="dynamic" v-model.number="newData" v-if="isCalendar || isForm || isList || isKanban || isRelationship">
+		<select class="dynamic" v-model.number="newData" v-if="isCalendar || isForm || isList || isKanban || isRelationship" :disabled="readonly">
 			<option value="0">{{ capApp.effectData.d0 }}</option>
 			<optgroup :label="capApp.option.dataOptions">
 				<option value="7">{{ capApp.effectData.d7 }}</option>
@@ -57,14 +55,16 @@ let MyBuilderFormStateEffect = {
 		
 		<my-button image="delete.png"
 			@trigger="$emit('remove')"
+			:active="!readonly"
 			:cancel="true"
 		/>
 	</div>`,
 	props:{
-		entityIdMapRef:{ type:Object, required:true },
-		fieldIdMap:    { type:Object, required:true },
-		modelValue:    { type:Object, required:true },
-		order:         { type:Number, required:true }
+		entityIdMapRef:{ type:Object,  required:true },
+		fieldIdMap:    { type:Object,  required:true },
+		modelValue:    { type:Object,  required:true },
+		order:         { type:Number,  required:true },
+		readonly:      { type:Boolean, required:true }
 	},
 	emits:['remove','update:modelValue'],
 	computed:{
@@ -95,22 +95,22 @@ let MyBuilderFormStateEffect = {
 		},
 
 		// simple
-		effect:        (s) => JSON.parse(JSON.stringify(s.modelValue)),
-		fieldSet:      (s) => s.effect.fieldId      !== null && s.fieldIdMap[s.effect.fieldId] !== undefined,
-		isAction:      (s) => s.effect.formActionId !== null,
-		isButton:      (s) => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'button',
-		isCalendar:    (s) => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'calendar',
-		isKanban:      (s) => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'kanban',
-		isData:        (s) => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'data',
-		isForm:        (s) => s.effect.fieldId === null && s.effect.formActionId === null && s.effect.tabId === null,
-		isList:        (s) => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'list',
-		isRelationship:(s) => s.isData && s.isAttributeRelationship(s.attributeIdMap[s.fieldIdMap[s.effect.fieldId].attributeId].content),
-		isVariable:    (s) => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'variable',
+		effect:        s => JSON.parse(JSON.stringify(s.modelValue)),
+		fieldSet:      s => s.effect.fieldId      !== null && s.fieldIdMap[s.effect.fieldId] !== undefined,
+		isAction:      s => s.effect.formActionId !== null,
+		isButton:      s => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'button',
+		isCalendar:    s => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'calendar',
+		isKanban:      s => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'kanban',
+		isData:        s => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'data',
+		isForm:        s => s.effect.fieldId === null && s.effect.formActionId === null && s.effect.tabId === null,
+		isList:        s => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'list',
+		isRelationship:s => s.isData && s.isAttributeRelationship(s.attributeIdMap[s.fieldIdMap[s.effect.fieldId].attributeId].content),
+		isVariable:    s => s.fieldSet && s.fieldIdMap[s.effect.fieldId].content === 'variable',
 		
 		// store
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		capApp:        (s) => s.$store.getters.captions.builder.form,
-		capGen:        (s) => s.$store.getters.captions.generic
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		capApp:        s => s.$store.getters.captions.builder.form,
+		capGen:        s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
@@ -119,13 +119,7 @@ let MyBuilderFormStateEffect = {
 
 		// presentation
 		getTitleEffect(type,ref,id) {
-			const notSaved = id.startsWith('new');
-			const postfix  = notSaved ? ` (${this.capGen.notSaved})` : '';
-			let title      = '';
-
-			if(type === 'F') title = this.getFieldTitle(this.fieldIdMap[id]);
-			
-			return type + ref + ' - ' + title + postfix;
+			return `${type}${ref} - ${type === 'F' ? this.getFieldTitle(this.fieldIdMap[id]) : ''}`;
 		},
 
 		// set
@@ -137,7 +131,7 @@ let MyBuilderFormStateEffect = {
 	}
 };
 
-let MyBuilderFormState = {
+const MyBuilderFormState = {
 	name:'my-builder-form-state',
 	components:{MyBuilderFormStateEffect},
 	template:`<div class="builder-form-state">
@@ -146,14 +140,17 @@ let MyBuilderFormState = {
 				@trigger="$emit('open')"
 				:captionTitle="capGen.button.show"
 				:image="open ? 'triangleDown.png' : 'triangleRight.png'"
+				:naked="true"
 			/>
 			<input class="description"
 				@input="update('description',-1,$event.target.value)"
-				:placeholder="capApp.descriptionHint"
+				:disabled="readonly"
+				:placeholder="capGen.description"
 				:value="state.description"
 			/>
 			<my-button image="delete.png"
 				@trigger="$emit('remove')"
+				:active="!readonly"
 				:cancel="true"
 				:captionTitle="capGen.button.delete"
 			/>
@@ -162,22 +159,25 @@ let MyBuilderFormState = {
 		<div class="details" v-if="open">
 			<my-button image="add.png"
 				@trigger="addCondition"
-				:caption="capApp.conditions"
+				:active="!readonly"
+				:caption="capGen.conditions"
 				:naked="true"
 			/>
 			<my-filters
 				v-model="conditions"
 				:builderMode="true"
 				:disableContent="['attribute','getter','globalSearch','javascript','nowDate','nowDatetime','nowTime','subQuery']"
-				:entityIdMapRef="entityIdMapRef"
-				:fieldIdMap="fieldIdMap"
+				:entityIdMapRef
+				:fieldIdMap
 				:formId="form.id"
 				:moduleId="form.moduleId"
+				:readonly
 			/>
 			
 			<my-button image="add.png"
 				@trigger="addEffect"
-				:caption="capApp.effects"
+				:active="!readonly"
+				:caption="capGen.effects"
 				:naked="true"
 			/>
 			<div class="effects">
@@ -185,11 +185,12 @@ let MyBuilderFormState = {
 					v-for="(e,i) in state.effects"
 					@update:modelValue="update('effects',i,$event)"
 					@remove="remove('effects',i)"
-					:entityIdMapRef="entityIdMapRef"
-					:fieldIdMap="fieldIdMap"
+					:entityIdMapRef
+					:fieldIdMap
 					:key="getEffectRef(state.effects[i])"
 					:modelValue="state.effects[i]"
 					:order="effectIndexesOrdered.indexOf(i)"
+					:readonly
 				/>
 			</div>
 		</div>
@@ -200,11 +201,12 @@ let MyBuilderFormState = {
 		fieldIdMap:    { type:Object,  required:true }, // all fields by ID
 		form:          { type:Object,  required:true },
 		modelValue:    { type:Object,  required:true },
-		open:          { type:Boolean, required:true }
+		open:          { type:Boolean, required:true },
+		readonly:      { type:Boolean, required:true }
 	},
 	emits:['open','remove','update:modelValue'],
 	computed:{
-		effectIndexesOrdered:(s) => {
+		effectIndexesOrdered:s => {
 			let effects = JSON.parse(JSON.stringify(s.state.effects));
 			let out     = new Array(effects.length);
 
@@ -226,37 +228,41 @@ let MyBuilderFormState = {
 		},
 		
 		// simple
-		state:(s) => JSON.parse(JSON.stringify(s.modelValue)),
+		state:s => JSON.parse(JSON.stringify(s.modelValue)),
 		
 		// store
-		capApp:(s) => s.$store.getters.captions.builder.form.states,
-		capGen:(s) => s.$store.getters.captions.generic
+		capApp:s => s.$store.getters.captions.builder.form.states,
+		capGen:s => s.$store.getters.captions.generic
 	},
 	methods:{
 		addCondition() {
 			let v = JSON.parse(JSON.stringify(this.state));
 			v.conditions.push({
 				connector:'AND',
-				index:0,
+				position:0,
 				operator:'=',
 				side0:{
 					brackets:0,
+					content:'field',
 					collectionId:null,
 					columnId:null,
-					content:'field',
 					fieldId:null,
+					formStateId:null,
 					presetId:null,
 					roleId:null,
+					variableId:null,
 					value:''
 				},
 				side1:{
 					brackets:0,
+					content:'value',
 					collectionId:null,
 					columnId:null,
-					content:'value',
 					fieldId:null,
+					formStateId:null,
 					presetId:null,
 					roleId:null,
+					variableId:null,
 					value:''
 				}
 			});
@@ -294,13 +300,14 @@ let MyBuilderFormState = {
 	}
 };
 
-let MyBuilderFormStates = {
+export default {
 	name:'my-builder-form-states',
 	components:{ MyBuilderFormState },
 	template:`<div class="builder-form-states">
 		<div class="builder-form-states-actions">
 			<my-button image="add.png"
 				@trigger="add"
+				:active="!readonly"
 				:caption="capGen.button.add"
 			/>
 			
@@ -310,7 +317,7 @@ let MyBuilderFormStates = {
 					:placeholder="capGen.button.filter"
 				/>
 				<select v-model="filterFieldId">
-					<option value="">{{ capApp.option.filterFieldIdHint }}</option>
+					<option value="">{{ capGen.field }}</option>
 					<template v-for="(ref,fieldId) in entityIdMapRef.field">
 						<option
 							v-if="fieldIdsUsed.includes(fieldId)"
@@ -319,7 +326,7 @@ let MyBuilderFormStates = {
 					</template>
 				</select>
 				<select v-model="filterFormActionId">
-					<option value="">{{ capApp.option.filterFormActionIdHint }}</option>
+					<option value="">{{ capGen.action }}</option>
 					<template v-for="(ref,formActionId) in entityIdMapRef.formAction">
 						<option
 							v-if="formActionIdsUsed.includes(formActionId)"
@@ -328,7 +335,7 @@ let MyBuilderFormStates = {
 					</template>
 				</select>
 				<select v-model="filterTabId">
-					<option value="">{{ capApp.option.filterTabIdHint }}</option>
+					<option value="">{{ capGen.tab }}</option>
 					<template v-for="(ref,tabId) in entityIdMapRef.tab">
 						<option
 							v-if="tabIdsUsed.includes(tabId)"
@@ -343,25 +350,27 @@ let MyBuilderFormStates = {
 			<my-builder-form-state
 				v-for="(s,i) in states"
 				v-show="stateIndexesShow.includes(i)"
-				@open="open(i)"
+				@open="open(s.id)"
 				@remove="remove(i)"
 				@update:modelValue="update(i,$event)"
-				:dataFields="dataFields"
-				:entityIdMapRef="entityIdMapRef"
-				:fieldIdMap="fieldIdMap"
-				:form="form"
+				:dataFields
+				:entityIdMapRef
+				:fieldIdMap
+				:form
 				:key="s.id"
 				:modelValue="states[i]"
-				:open="stateIndexesOpen.includes(i)"
+				:open="stateIdsOpen.includes(s.id)"
+				:readonly
 			/>
 		</div>
 	</div>`,
 	props:{
-		dataFields:    { type:Array,  required:true },
-		entityIdMapRef:{ type:Object, required:false, default:() => {return {}} },
-		fieldIdMap:    { type:Object, required:true },
-		form:          { type:Object, required:true },
-		modelValue:    { type:Array,  required:true }
+		dataFields:    { type:Array,   required:true },
+		entityIdMapRef:{ type:Object,  required:false, default:() => {return {}} },
+		fieldIdMap:    { type:Object,  required:true },
+		form:          { type:Object,  required:true },
+		modelValue:    { type:Array,   required:true },
+		readonly:      { type:Boolean, required:true }
 	},
 	emits:['update:modelValue'],
 	data() {
@@ -370,7 +379,7 @@ let MyBuilderFormStates = {
 			filterFieldId:'',
 			filterFormActionId:'',
 			filterTabId:'',
-			stateIndexesOpen:[]
+			stateIdsOpen:[]
 		};
 	},
 	computed:{
@@ -417,7 +426,7 @@ let MyBuilderFormStates = {
 				let s = this.states[i];
 				
 				// always keep open states visible
-				if(this.stateIndexesOpen.includes(i)) {
+				if(this.stateIdsOpen.includes(s.id)) {
 					out.push(i);
 					continue;
 				}
@@ -475,31 +484,26 @@ let MyBuilderFormStates = {
 		},
 		
 		// simple
-		states:(s) => JSON.parse(JSON.stringify(s.modelValue)),
+		states:s => JSON.parse(JSON.stringify(s.modelValue)),
 		
 		// stores
-		capApp:(s) => s.$store.getters.captions.builder.form.states,
-		capGen:(s) => s.$store.getters.captions.generic
+		capApp:s => s.$store.getters.captions.builder.form.states,
+		capGen:s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
-		getNilUuid,
+		getTemplateFormState,
 		
 		// actions
 		add() {
 			let v = JSON.parse(JSON.stringify(this.states));
-			v.unshift({
-				id:this.getNilUuid(),
-				description:'',
-				conditions:[],
-				effects:[]
-			});
+			v.unshift(this.getTemplateFormState());
 			this.$emit('update:modelValue',v);
 		},
-		open(i) {
-			let pos = this.stateIndexesOpen.indexOf(i);
-			if(pos === -1) this.stateIndexesOpen.push(i);
-			else           this.stateIndexesOpen.splice(pos,1);
+		open(id) {
+			const pos = this.stateIdsOpen.indexOf(id);
+			if(pos === -1) this.stateIdsOpen.push(id);
+			else           this.stateIdsOpen.splice(pos,1);
 		},
 		remove(i) {
 			let v = JSON.parse(JSON.stringify(this.states));

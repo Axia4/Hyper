@@ -1,11 +1,10 @@
-import MyStore               from '../../stores/store.js';
-import {getNilUuid}          from './generic.js';
+import MyStore from '../../stores/store.js';
 import {
 	getColumnsProcessed,
 	getColumnTitle
 } from './column.js';
 import {
-	getJoinIndexMap,
+	getJoinsIndexMap,
 	getQueryExpressions,
 	getQueryFiltersProcessed,
 	getRelationsJoined
@@ -14,16 +13,6 @@ import {
 // a collection is an array of records
 // each record is an array of attribute values, retrieved and ordered following the collection columns
 
-export function getCollectionConsumerTemplate() {
-	return {
-		id:getNilUuid(),
-		collectionId:null,
-		columnIdDisplay:null,
-		flags:[],
-		onMobile:false,
-		openForm:null
-	};
-};
 export function getCollectionColumnIndex(collectionId,columnId) {
 	const colSchema = MyStore.getters['schema/collectionIdMap'][collectionId];
 	for(let i = 0, j = colSchema.columns.length; i < j; i++) {
@@ -170,16 +159,16 @@ export function updateCollections(collectionId) {
 		let requestIds        = []; // collection ID, in order, for each data GET request
 		
 		const addCollection = function(collectionId) {
-			if(typeof access[collectionId] === 'undefined' || access[collectionId] < 1)
+			if(access[collectionId] === undefined || access[collectionId] < 1)
 				return;
 			
 			const c = collectionIdMap[collectionId];
 			const q = c.query;
 			
-			if(q.relationId === null)
+			if(q === null)
 				return;
 			
-			const joinIndexMap = getJoinIndexMap(q.joins);
+			const joinIndexMap = getJoinsIndexMap(q.joins);
 			const filters      = getQueryFiltersProcessed(q.filters,joinIndexMap);
 			const columns      = getColumnsProcessed(c.columns,[],joinIndexMap);
 			

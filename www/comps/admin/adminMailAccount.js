@@ -1,7 +1,10 @@
-import {dialogCloseAsk} from '../shared/dialog.js';
-export {MyAdminMailAccount as default};
+import {deepIsEqual} from '../shared/generic.js';
+import {
+	dialogCloseAsk,
+	dialogDeleteAsk
+} from '../shared/dialog.js';
 
-let MyAdminMailAccount = {
+export default {
 	name:'my-admin-mail-account',
 	template:`<div class="app-sub-window under-header at-top with-margin" @mousedown.self="closeAsk">
 		
@@ -28,7 +31,7 @@ let MyAdminMailAccount = {
 					<my-button image="refresh.png"
 						v-if="!isNew"
 						@trigger="reset"
-						:active="hasChanges"
+						:active="isChanged"
 						:caption="capGen.button.refresh"
 					/>
 					<my-button image="add.png"
@@ -40,7 +43,7 @@ let MyAdminMailAccount = {
 				<div class="area">
 					<my-button image="delete.png"
 						v-if="!isNew"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:cancel="true"
 						:caption="capGen.button.delete"
 					/>
@@ -58,7 +61,7 @@ let MyAdminMailAccount = {
 						<tr>
 							<td>{{ capApp.accountMode }}*</td>
 							<td>
-								<select v-model="inputs.mode">
+								<select v-model="inputs.mode" :disabled="!isNew">
 									<option value="smtp">SMTP</option>
 									<option value="imap">IMAP</option>
 								</select>
@@ -72,19 +75,21 @@ let MyAdminMailAccount = {
 								<select v-model="inputs.authMethod">
 									<option value="plain">{{ capApp.option.authMethod.plain }}</option>
 									<option value="xoauth2">{{ capApp.option.authMethod.xoauth2 }}</option>
-									<option value="login" :disabled="!isSmtp">{{ capApp.option.authMethod.login }}</option>
+									<option value="login" v-if="isSmtp">{{ capApp.option.authMethod.login }}</option>
+									<option value="none"  v-if="isSmtp">[{{ capApp.option.authMethod.none }}]</option>
 								</select>
 							</td>
 							<td v-if="inputs.authMethod === 'login'">{{ capApp.accountAuthMethodHintLogin }}</td>
 							<td v-if="inputs.authMethod === 'plain'">{{ capApp.accountAuthMethodHintPlain }}</td>
 							<td v-if="inputs.authMethod === 'xoauth2'">{{ capApp.accountAuthMethodHintXOAuth2 }}</td>
+							<td v-if="inputs.authMethod === 'none'">{{ capApp.accountAuthMethodHintNone }}</td>
 						</tr>
-						<tr>
+						<tr v-if="!isNoAuth">
 							<td>{{ capApp.accountUser }}*</td>
 							<td><input v-model="inputs.username" /></td>
 							<td></td>
 						</tr>
-						<tr v-if="!isOauth">
+						<tr v-if="!isNoAuth && !isOauth">
 							<td>{{ capApp.accountPass }}*</td>
 							<td><input v-model="inputs.password" type="password" /></td>
 							<td></td>
@@ -113,15 +118,30 @@ let MyAdminMailAccount = {
 							<td><input v-model="inputs.sendAs" /></td>
 							<td><span v-html="capApp.accountSendAsHint" /></td>
 						</tr>
+						<tr v-if="isSmtp">
+							<td>{{ capApp.accountSmimeSign }}*</td>
+							<td>
+								<table>
+									<tbody>
+										<tr><td><my-bool v-model="inputs.smimeSign" /></td></tr>
+										<tr v-if="isSmimeSign">
+											<td><input v-model="inputs.smimePathCrt" :placeholder="capGen.file + ': ' + capGen.certificate" /></td>
+										</tr>
+										<tr v-if="isSmimeSign">
+											<td><input v-model="inputs.smimePathKey" :placeholder="capGen.file + ': ' + capGen.keyPrivate" /></td>
+										</tr>
+									</tbody>
+								</table>
+							</td>
+							<td><span v-if="isSmimeSign" v-html="capApp.accountSmimeSignHint" /></td>
+						</tr>
 						<tr>
 							<td>{{ capGen.encryption }}*</td>
 							<td>
-								<select
-									@change="inputs.startTls = $event.target.value === 'starttls'"
-									:value="inputs.startTls ? 'starttls' : 'ssl'"
-								>
-									<option value="starttls">{{ capApp.option.encryption.starttls }}</option>
-									<option value="ssl">{{ capApp.option.encryption.ssl }}</option>
+								<select v-model="inputs.connectMethod">
+									<option value="tls">{{ capApp.option.connectMethod.tls }}</option>
+									<option value="starttls">{{ capApp.option.connectMethod.starttls }}</option>
+									<option value="plain" v-if="isSmtp">[{{ capApp.option.connectMethod.plain }}]</option>
 								</select>
 							</td>
 							<td></td>
@@ -164,51 +184,53 @@ let MyAdminMailAccount = {
 		};
 	},
 	computed:{
-		hasChanges:(s) => {
-			for(let k in s.inputsOrg) {
-				if(JSON.stringify(s.inputsOrg[k]) !== JSON.stringify(s.inputs[k]))
-					return true;
-			}
-			return false;
-		},
-		inputsOrg:(s) => s.isNew ? {
+		inputsOrg:s => s.isNew ? {
 			id:0,
 			name:'',
 			comment:null,
 			mode:'smtp',
+			connectMethod:'tls',
 			authMethod:'plain',
 			username:'',
 			password:'',
-			startTls:false,
 			sendAs:'',
 			hostName:'',
 			hostPort:465,
-			oauthClientId:null
+			oauthClientId:null,
+			smimeSign:false,
+			smimePathCrt:null,
+			smimePathKey:null
 		} : s.mailAccountIdMap[s.id],
 		
 		// simple states
-		canSave:(s) =>
+		canSave:s =>
 			s.isReady &&
-			s.hasChanges &&
+			s.isChanged &&
 			s.inputs.name     !== '' &&
 			s.inputs.mode     !== '' &&
 			s.inputs.hostName !== '' &&
 			s.inputs.hostPort !== '' && (
+				s.isNoAuth ||
+				(s.isOauth && s.inputs.oauthClientId !== null && s.inputs.username !== '') ||
+				(s.inputs.password !== '' && s.inputs.username !== '')
+			) && (
+				!s.isSmtp ||
+				!s.isSmimeSign ||
 				(
-					s.inputs.authMethod    === 'xoauth2' &&
-					s.inputs.oauthClientId !== null
-				) || (
-					s.inputs.authMethod !== 'xoauth2' &&
-					s.inputs.password   !== ''
+					s.inputs.smimePathCrt !== null && s.inputs.smimePathCrt !== '' &&
+					s.inputs.smimePathKey !== null && s.inputs.smimePathKey !== ''
 				)
 			),
-		isNew:  (s) => s.id                === 0,
-		isOauth:(s) => s.inputs.authMethod === 'xoauth2',
-		isSmtp: (s) => s.inputs.mode       === 'smtp',
+		isChanged:  s => !s.deepIsEqual(s.inputsOrg,s.inputs),
+		isNew:      s => s.id                === 0,
+		isNoAuth:   s => s.inputs.authMethod === 'none',
+		isOauth:    s => s.inputs.authMethod === 'xoauth2',
+		isSmimeSign:s => s.inputs.smimeSign,
+		isSmtp:     s => s.inputs.mode       === 'smtp',
 		
 		// stores
-		capApp:(s) => s.$store.getters.captions.admin.mails,
-		capGen:(s) => s.$store.getters.captions.generic
+		capApp:s => s.$store.getters.captions.admin.mails,
+		capGen:s => s.$store.getters.captions.generic
 	},
 	mounted() {
 		window.addEventListener('keydown',this.handleHotkeys);
@@ -218,7 +240,9 @@ let MyAdminMailAccount = {
 	},
 	methods:{
 		// externals
+		deepIsEqual,
 		dialogCloseAsk,
+		dialogDeleteAsk,
 
 		handleHotkeys(e) {
 			if(e.ctrlKey && e.key === 's') {
@@ -235,7 +259,7 @@ let MyAdminMailAccount = {
 		
 		// actions
 		closeAsk() {
-			this.dialogCloseAsk(this.close,this.hasChanges);
+			this.dialogCloseAsk(this.close,this.isChanged);
 		},
 		close() {
 			this.$emit('close');
@@ -252,46 +276,19 @@ let MyAdminMailAccount = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png',
-					keyEnter:true
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png',
-					keyEscape:true
-				}]
-			});
-		},
 		del() {
-			ws.send('mailAccount','del',{id:this.id},true).then(
+			ws.send('mailAccount','del',this.id,true).then(
 				this.reloadAndClose,
 				this.$root.genericError
 			);
 		},
 		set() {
-			if(this.inputs.comment === '')
-				this.inputs.comment = null;
+			// set nulls where applicable
+			if(this.inputs.comment === '')      this.inputs.comment      = null;
+			if(this.inputs.smimePathCrt === '') this.inputs.smimePathCrt = null;
+			if(this.inputs.smimePathKey === '') this.inputs.smimePathKey = null;
 
-			ws.send('mailAccount','set',{
-				id:this.id,
-				name:this.inputs.name,
-				comment:this.inputs.comment,
-				mode:this.inputs.mode,
-				authMethod:this.inputs.authMethod,
-				username:this.inputs.username,
-				password:this.inputs.password,
-				startTls:this.inputs.startTls,
-				sendAs:this.inputs.sendAs,
-				hostName:this.inputs.hostName,
-				hostPort:this.inputs.hostPort,
-				oauthClientId:this.inputs.oauthClientId
-			},true).then(
+			ws.send('mailAccount','set',this.inputs,true).then(
 				this.reloadAndClose,
 				this.$root.genericError
 			);

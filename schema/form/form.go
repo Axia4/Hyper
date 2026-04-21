@@ -33,8 +33,7 @@ func Copy_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID, id uuid.UUID, n
 	form.Name = newName
 	form.ModuleId = moduleId
 
-	// replace IDs with new ones
-	// keep association between old (replaced) and new ID
+	// replace IDs with new ones, keep association between old (replaced) and new ID
 	idMapReplaced := make(map[uuid.UUID]uuid.UUID)
 
 	form.Id, err = schema.ReplaceUuid(form.Id, idMapReplaced)
@@ -63,7 +62,7 @@ func Copy_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID, id uuid.UUID, n
 
 			// replace IDs inside fields
 			// first run: field IDs
-			// second run: IDs for (sub)queries, columns, tabs
+			// second run: IDs for (sub)queries, columns, tabs, fields referencing other fields (openDoc)
 			fieldIf, err = replaceFieldIds(ctx, tx, fieldIf, idMapReplaced, runs == 0)
 			if err != nil {
 				return err
@@ -146,9 +145,8 @@ func Del_tx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 
 func Get_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID, ids []uuid.UUID) ([]types.Form, error) {
 
-	forms := make([]types.Form, 0)
 	sqlWheres := []string{}
-	sqlValues := []interface{}{}
+	sqlValues := []any{}
 
 	// filter to specified module ID
 	if moduleId != uuid.Nil {
@@ -163,7 +161,7 @@ func Get_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID, ids []uuid.UUID)
 	}
 
 	rows, err := tx.Query(ctx, fmt.Sprintf(`
-		SELECT id, preset_id_open, icon_id, field_id_focus, name, no_data_actions, ARRAY(
+		SELECT id, preset_id_open, icon_id, field_id_focus, name, no_data_actions, record_title, ARRAY(
 			SELECT article_id
 			FROM app.article_form
 			WHERE form_id = f.id
@@ -175,47 +173,49 @@ func Get_tx(ctx context.Context, tx pgx.Tx, moduleId uuid.UUID, ids []uuid.UUID)
 		ORDER BY name ASC
 	`, strings.Join(sqlWheres, "\n")), sqlValues...)
 	if err != nil {
-		return forms, err
+		return nil, err
 	}
+	defer rows.Close()
 
+	forms := make([]types.Form, 0)
 	for rows.Next() {
 		var f types.Form
 
 		if err := rows.Scan(&f.Id, &f.PresetIdOpen, &f.IconId, &f.FieldIdFocus,
-			&f.Name, &f.NoDataActions, &f.ArticleIdsHelp); err != nil {
+			&f.Name, &f.NoDataActions, &f.RecordTitle, &f.ArticleIdsHelp); err != nil {
 
-			return forms, err
+			return nil, err
 		}
 		f.ModuleId = moduleId
 		forms = append(forms, f)
 	}
 	rows.Close()
 
-	// collect form query, fields, functions, states and captions
+	// collect sub entities
 	for i, form := range forms {
 		form.Query, err = query.Get_tx(ctx, tx, schema.DbForm, form.Id, 0, 0, 0)
 		if err != nil {
-			return forms, err
+			return nil, err
 		}
 		form.Fields, err = field.Get_tx(ctx, tx, form.Id)
 		if err != nil {
-			return forms, err
+			return nil, err
 		}
 		form.Actions, err = getActions_tx(ctx, tx, form.Id)
 		if err != nil {
-			return forms, err
+			return nil, err
 		}
 		form.Functions, err = getFunctions_tx(ctx, tx, form.Id)
 		if err != nil {
-			return forms, err
+			return nil, err
 		}
 		form.States, err = getStates_tx(ctx, tx, form.Id)
 		if err != nil {
-			return forms, err
+			return nil, err
 		}
 		form.Captions, err = caption.Get_tx(ctx, tx, schema.DbForm, form.Id, []string{"formTitle"})
 		if err != nil {
-			return forms, err
+			return nil, err
 		}
 		forms[i] = form
 	}
@@ -227,44 +227,25 @@ func Set_tx(ctx context.Context, tx pgx.Tx, frm types.Form) error {
 	// remove only invalid character (dot), used for form function references
 	frm.Name = strings.Replace(frm.Name, ".", "", -1)
 
-	known, err := schema.CheckCreateId_tx(ctx, tx, &frm.Id, schema.DbForm, "id")
-	if err != nil {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO app.form (id, module_id, preset_id_open, icon_id,
+			field_id_focus, name, no_data_actions, record_title)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (id)
+		DO UPDATE SET preset_id_open = $3, icon_id = $4, field_id_focus = $5,
+			name = $6, no_data_actions = $7, record_title = $8
+	`, frm.Id, frm.ModuleId, frm.PresetIdOpen, frm.IconId, frm.FieldIdFocus,
+		frm.Name, frm.NoDataActions, frm.RecordTitle); err != nil {
+
 		return err
 	}
-
-	if known {
-		if _, err := tx.Exec(ctx, `
-			UPDATE app.form
-			SET preset_id_open = $1, icon_id = $2, field_id_focus = $3,
-				name = $4, no_data_actions = $5
-			WHERE id = $6
-		`, frm.PresetIdOpen, frm.IconId, frm.FieldIdFocus,
-			frm.Name, frm.NoDataActions, frm.Id); err != nil {
-
-			return err
-		}
-	} else {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO app.form (id, module_id, preset_id_open, icon_id,
-				field_id_focus, name, no_data_actions)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)
-		`, frm.Id, frm.ModuleId, frm.PresetIdOpen, frm.IconId,
-			frm.FieldIdFocus, frm.Name, frm.NoDataActions); err != nil {
-
-			return err
-		}
-	}
-
-	// set form query
 	if err := query.Set_tx(ctx, tx, schema.DbForm, frm.Id, 0, 0, 0, frm.Query); err != nil {
 		return err
 	}
 
 	// set fields (recursive)
 	fieldIdMapQuery := make(map[uuid.UUID]types.Query)
-	if err := field.Set_tx(ctx, tx, frm.Id, pgtype.UUID{}, pgtype.UUID{},
-		frm.Fields, fieldIdMapQuery); err != nil {
-
+	if err := field.Set_tx(ctx, tx, frm.Id, pgtype.UUID{}, pgtype.UUID{}, frm.Fields, fieldIdMapQuery); err != nil {
 		return err
 	}
 
@@ -289,6 +270,7 @@ func Set_tx(ctx context.Context, tx pgx.Tx, frm types.Form) error {
 		return err
 	}
 	// fix imports < 3.2: Migration from help captions to help articles
+	var err error
 	frm.Captions, err = compatible.FixCaptions_tx(ctx, tx, "form", frm.Id, frm.Captions)
 	if err != nil {
 		return err
@@ -297,17 +279,25 @@ func Set_tx(ctx context.Context, tx pgx.Tx, frm types.Form) error {
 }
 
 // form duplication
-func replaceFieldIds(ctx context.Context, tx pgx.Tx, fieldIf interface{},
-	idMapReplaced map[uuid.UUID]uuid.UUID, setFieldIds bool) (interface{}, error) {
-
+func replaceFieldIds(ctx context.Context, tx pgx.Tx, fieldIf any, idMapReplaced map[uuid.UUID]uuid.UUID, setFieldIds bool) (any, error) {
 	var err error
+
+	// replace field ID to attach doc to if it was replaced
+	replaceOpenDoc := func(openDoc types.OpenDoc) types.OpenDoc {
+		if !openDoc.FieldIdAddTo.Valid {
+			return openDoc
+		}
+		if _, exists := idMapReplaced[openDoc.FieldIdAddTo.Bytes]; exists {
+			openDoc.FieldIdAddTo = pgtype.UUID{Bytes: idMapReplaced[openDoc.FieldIdAddTo.Bytes], Valid: true}
+		}
+		return openDoc
+	}
 
 	// replace form ID to open if it was replaced (field opening its own form)
 	replaceOpenForm := func(openForm types.OpenForm) types.OpenForm {
 		if openForm.FormIdOpen == uuid.Nil {
 			return openForm
 		}
-
 		if _, exists := idMapReplaced[openForm.FormIdOpen]; exists {
 			openForm.FormIdOpen = idMapReplaced[openForm.FormIdOpen]
 		}
@@ -329,6 +319,7 @@ func replaceFieldIds(ctx context.Context, tx pgx.Tx, fieldIf interface{},
 				return nil, err
 			}
 		} else {
+			field.OpenDoc = replaceOpenDoc(field.OpenDoc)
 			field.OpenForm = replaceOpenForm(field.OpenForm)
 		}
 

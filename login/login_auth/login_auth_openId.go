@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"r3/cache"
+	"r3/config"
 	"r3/db"
 	"r3/log"
 	"r3/login"
@@ -39,7 +40,14 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 		return types.LoginAuthResult{}, errors.New("missing provider or redirect URL for OAUTH client")
 	}
 
-	provider, err := oidc.NewProvider(ctx, c.ProviderUrl.String)
+	httpClient, err := config.GetHttpClient(false, 10)
+	if err != nil {
+		return types.LoginAuthResult{}, err
+	}
+
+	ctxHttp := oidc.ClientContext(ctx, &httpClient)
+
+	provider, err := oidc.NewProvider(ctxHttp, c.ProviderUrl.String)
 	if err != nil {
 		return types.LoginAuthResult{}, err
 	}
@@ -57,7 +65,7 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 		Endpoint:     provider.Endpoint(),
 		Scopes:       c.Scopes,
 	}
-	tokens, err := oauth2Config.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+	tokens, err := oauth2Config.Exchange(ctxHttp, code, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	if err != nil {
 		return types.LoginAuthResult{}, err
 	}
@@ -67,7 +75,7 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 	if !ok {
 		return types.LoginAuthResult{}, err
 	}
-	idToken, err := provider.Verifier(&oidc.Config{ClientID: c.ClientId}).Verify(ctx, tokenIdRaw)
+	idToken, err := provider.Verifier(&oidc.Config{ClientID: c.ClientId}).Verify(ctxHttp, tokenIdRaw)
 	if err != nil {
 		return types.LoginAuthResult{}, err
 	}
@@ -85,6 +93,7 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 	var metaEx types.LoginMeta
 	var limited = false
 	var newLogin = false
+	var adminChanged = false
 	var metaChanged = false
 	var rolesChanged = false
 
@@ -121,16 +130,12 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 			return types.LoginAuthResult{}, err
 		}
 	}
-
-	if err := preAuthChecks(l.Id, l.Admin, limited, !newLogin); err != nil {
-		return types.LoginAuthResult{}, err
-	}
 	// read mapped login meta data from ID token claims
-	var claimsIf interface{}
+	var claimsIf any
 	if err := idToken.Claims(&claimsIf); err != nil {
 		return types.LoginAuthResult{}, err
 	}
-	claims, ok := claimsIf.(map[string]interface{})
+	claims, ok := claimsIf.(map[string]any)
 	if !ok {
 		return types.LoginAuthResult{}, errors.New("ID token is not a key/value JSON object")
 	}
@@ -158,10 +163,31 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 		return types.LoginAuthResult{}, fmt.Errorf("username claim '%s' cannot be read as string", c.ClaimUsername.String)
 	}
 
+	// read admin value from ID token claim, if active
+	if c.ClaimAdmin.Valid && c.ClaimAdminValue.Valid {
+		claimAdminIf, ok := claims[c.ClaimAdmin.String]
+		if !ok {
+			return types.LoginAuthResult{}, fmt.Errorf("ID token does not contain admin claim '%s'", c.ClaimAdmin.String)
+		}
+		claimAdmin, ok := claimAdminIf.(string)
+		if !ok {
+			return types.LoginAuthResult{}, fmt.Errorf("admin claim '%s' cannot be read as string", c.ClaimAdmin.String)
+		}
+		adminNew := claimAdmin == c.ClaimAdminValue.String
+		if l.Admin != adminNew {
+			l.Admin = adminNew
+			adminChanged = true
+		}
+	}
+
+	if err := preAuthChecks(l.Id, l.Admin, limited, !newLogin); err != nil {
+		return types.LoginAuthResult{}, err
+	}
+
 	// role assignment via claim
 	if c.ClaimRoles.Valid && c.ClaimRoles.String != "" {
 		if roleClaim, ok := claims[c.ClaimRoles.String]; ok {
-			if roles, ok := roleClaim.([]interface{}); ok {
+			if roles, ok := roleClaim.([]any); ok {
 
 				// collect names in roles claim
 				nameMap := make(map[string]bool)
@@ -190,7 +216,7 @@ func OpenId(ctx context.Context, oauthClientId int32, code string, codeVerifier 
 	// set login if new or anything changed
 	// inactive users cannot authenticate via Open ID, so there is no way to disable users this way
 	//  but if the current active state is disabled, it must re-enable the user
-	if newLogin || metaChanged || rolesChanged || !active {
+	if newLogin || adminChanged || metaChanged || rolesChanged || !active {
 		tx, err := db.Pool.Begin(ctx)
 		if err != nil {
 			return types.LoginAuthResult{}, err

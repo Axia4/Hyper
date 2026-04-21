@@ -1,15 +1,16 @@
 import MyBuilderCaption                from './builderCaption.js';
 import MyBuilderCollectionInput        from './builderCollectionInput.js';
 import MyBuilderIconInput              from './builderIconInput.js';
-import MyBuilderOpenFormInput          from './builderOpenFormInput.js';
+import MyBuilderOpenDoc                from './builderOpenDoc.js';
+import MyBuilderOpenForm               from './builderOpenForm.js';
 import MyCodeEditor                    from '../codeEditor.js';
-import {getCollectionConsumerTemplate} from '../shared/collection.js';
-import {getJoinIndexMap}               from '../shared/query.js';
+import {openLink}                      from '../shared/generic.js';
+import {getJoinsIndexMap}              from '../shared/query.js';
 import {
-	getNilUuid,
-	getRandomInt,
-	openLink
-} from '../shared/generic.js';
+	getTemplateCollectionConsumer,
+	getTemplateQuery,
+	getTemplateTab
+} from '../shared/builderTemplate.js';
 import {
 	getDependentModules,
 	getItemTitle,
@@ -29,9 +30,7 @@ import {
 	isAttributeString
 } from '../shared/attribute.js';
 
-export {MyBuilderFieldOptions as default};
-
-let MyBuilderFieldOptionsChartSerie = {
+const MyBuilderFieldOptionsChartSerie = {
 	name:'my-builder-field-options-chart-serie',
 	template:`<tr>
 		<td colspan="999">
@@ -130,7 +129,7 @@ let MyBuilderFieldOptionsChartSerie = {
 	}
 };
 
-let MyBuilderFieldOptionsChart = {
+const MyBuilderFieldOptionsChart = {
 	name:'my-builder-field-options-chart',
 	components:{
 		MyBuilderFieldOptionsChartSerie,
@@ -278,14 +277,15 @@ let MyBuilderFieldOptionsChart = {
 	}
 };
 
-let MyBuilderFieldOptions = {
+export default {
 	name:'my-builder-field-options',
 	components:{
 		MyBuilderCaption,
 		MyBuilderCollectionInput,
 		MyBuilderFieldOptionsChart,
 		MyBuilderIconInput,
-		MyBuilderOpenFormInput
+		MyBuilderOpenDoc,
+		MyBuilderOpenForm
 	},
 	template:`<div class="builder-field-options">
 		<table class="generic-table-vertical default-inputs">
@@ -297,6 +297,7 @@ let MyBuilderFieldOptions = {
 							@update:modelValue="field.captions.fieldTitle = $event;set('captions',field.captions)"
 							:language="builderLanguage"
 							:modelValue="field.captions.fieldTitle"
+							:readonly
 						/>
 					</td>
 				</tr>
@@ -308,6 +309,7 @@ let MyBuilderFieldOptions = {
 							:language="builderLanguage"
 							:modelValue="field.captions.fieldHelp"
 							:multiLine="true"
+							:readonly
 						/>
 					</td>
 				</tr>
@@ -317,23 +319,25 @@ let MyBuilderFieldOptions = {
 						<my-builder-icon-input
 							@input="set('iconId',$event)"
 							:icon-id-selected="field.iconId"
-							:module="module"
+							:module
 							:title="capGen.icon"
+							:readonly
 						/>
 					</td>
 				</tr>
 				<tr>
-					<td>{{ capApp.state }}</td>
+					<td>{{ capGen.state }}</td>
 					<td>
 						<select
 							@input="set('state',$event.target.value)"
+							:disabled="readonly"
 							:value="field.state"
 						>
-							<option value="hidden">{{ capApp.stateHidden }}</option>
-							<option value="default">{{ capApp.stateDefault }}</option>
-							<option v-if="isData" value="optional">{{ capApp.stateOptional }}</option>
-							<option v-if="isData" value="required">{{ capApp.stateRequired }}</option>
-							<option v-if="isData || isButton" value="readonly">{{ capApp.stateReadonly }}</option>
+							<option value="hidden">{{ capGen.hidden }}</option>
+							<option value="default">{{ capGen.default }}</option>
+							<option v-if="isData" value="optional">{{ capGen.optional }}</option>
+							<option v-if="isData" value="required">{{ capGen.required }}</option>
+							<option v-if="isData || isButton" value="readonly">{{ capGen.readonly }}</option>
 						</select>
 					</td>
 				</tr>
@@ -345,6 +349,7 @@ let MyBuilderFieldOptions = {
 								@update:modelValue="set('onMobile',$event)"
 								:caption="capApp.onMobile"
 								:modelValue="field.onMobile"
+								:readonly
 							/>
 						</div>
 					</td>
@@ -357,6 +362,7 @@ let MyBuilderFieldOptions = {
 							<my-bool
 								@update:modelValue="set('richtext',$event)"
 								:modelValue="field.richtext"
+								:readonly
 							/>
 						</td>
 					</tr>
@@ -367,6 +373,7 @@ let MyBuilderFieldOptions = {
 									@update:modelValue="field.captions.fieldTitle = $event;set('captions',field.captions)"
 									:language="builderLanguage"
 									:modelValue="field.captions.fieldTitle"
+									:readonly
 									:richtext="true"
 								/>
 							</div>
@@ -377,6 +384,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="setInt('size',$event.target.value,false)"
+								:disabled="readonly"
 								:value="field.size"
 							>
 								<option value="1">h1</option>
@@ -414,6 +422,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<input
 								@input="setInt('min',$event.target.value,true)"
+								:disabled="readonly"
 								:value="field.min"
 							/>
 						</td>
@@ -423,6 +432,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<input
 								@input="setInt('max',$event.target.value,true)"
+								:disabled="readonly"
 								:value="field.max"
 							/>
 						</td>
@@ -432,6 +442,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="set('display',$event.target.value)"
+								:disabled="readonly"
 								:value="field.display"
 							>
 								<option v-for="o in displayOptions" :value="o">{{ capApp.option.display[o] }}</option>
@@ -443,6 +454,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<input
 								@input="setNull('regexCheck',$event.target.value)"
+								:disabled="readonly"
 								:value="field.regexCheck"
 							/>
 						</td>
@@ -456,6 +468,7 @@ let MyBuilderFieldOptions = {
 								<select
 									v-if="systemDefaults.length !== 0"
 									@input="set('def',$event.target.value)"
+									:disabled="readonly"
 									:value="systemDefaultUsed ? field.def : ''"
 								>
 									<option value="">[{{ capApp.systemDefaults.fixed }}]</option>
@@ -464,6 +477,7 @@ let MyBuilderFieldOptions = {
 								<input
 									v-if="!systemDefaultUsed"
 									@input="set('def',$event.target.value)"
+									:disabled="readonly"
 									:value="field.def"
 								/>
 							</div>
@@ -479,8 +493,8 @@ let MyBuilderFieldOptions = {
 								:consumer="field.defCollection"
 								:fixedCollection="false"
 								:flagsEnable="[]"
-								:module="module"
-								:readonly="false"
+								:module
+								:readonly
 								:showOnMobile="false"
 							/>
 						</td>
@@ -489,7 +503,7 @@ let MyBuilderFieldOptions = {
 						<td>{{ capApp.fieldDefaultPresetIds }}</td>
 						<td>
 							<div class="column gap">
-								<select @change="presetIdAdd($event.target.value)">
+								<select @change="presetIdAdd($event.target.value)" :disabled="readonly">
 									<option value="">-</option>
 									<template v-for="p in presetIdMap">
 										<option
@@ -504,6 +518,7 @@ let MyBuilderFieldOptions = {
 									<my-button image="cancel.png"
 										v-for="presetId in field.defPresetIds"
 										@trigger="presetIdRemove(presetId)"
+										:active="!readonly"
 										:caption="presetIdMap[presetId].name"
 										:key="presetId"
 									/>
@@ -518,6 +533,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="setNull('attributeIdAlt',$event.target.value)"
+								:disabled="readonly"
 								:value="field.attributeIdAlt"
 							>
 								<option value="">-</option>
@@ -535,6 +551,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="setNull('attributeIdAlt',$event.target.value)"
+								:disabled="readonly"
 								:value="field.attributeIdAlt"
 							>
 								<option value="">-</option>
@@ -555,6 +572,7 @@ let MyBuilderFieldOptions = {
 							<td>
 							<input
 								@input="setInt('autoSelect',$event.target.value,false)"
+								:disabled="readonly"
 								:placeholder="capApp.autoSelectHint"
 								:value="field.autoSelect"
 							/>
@@ -574,38 +592,42 @@ let MyBuilderFieldOptions = {
 									@update:modelValue="setFlags('clipboard',$event)"
 									:caption="capGen.clipboard"
 									:modelValue="field.flags.includes('clipboard')"
+									:readonly
 								/>
 								<my-button-check
 									v-if="!isDrawing"
 									@update:modelValue="setFlags('monospace',$event)"
 									:caption="capGen.monospace"
 									:modelValue="field.flags.includes('monospace')"
+									:readonly
 								/>
 								<my-button-check
 									v-if="isIFrame || isBarcode || isDrawing"
 									@update:modelValue="setFlags('hideInputs',$event)"
 									:caption="capApp.fieldFlags.hideInputs"
 									:modelValue="field.flags.includes('hideInputs')"
+									:readonly
 								/>
 							</template>
 							<template v-if="isRelationship">
 								<my-button-check
 									@update:modelValue="setFlags('relCategory',$event)"
-									:active="!field.flags.includes('relFlow')"
 									:caption="capApp.fieldFlags.relCategory"
 									:modelValue="field.flags.includes('relCategory')"
+									:readonly="field.flags.includes('relFlow') || readonly"
 								/>
 								<my-button-check
 									@update:modelValue="setFlags('relFlow',$event)"
-									:active="!field.flags.includes('relCategory') && !isRelationship1N"
 									:caption="capApp.fieldFlags.relFlow"
 									:modelValue="field.flags.includes('relFlow')"
+									:readonly="field.flags.includes('relCategory') || isRelationship1N || readonly"
 								/>
 								<my-button-check
 									v-if="!isVariable"
 									@update:modelValue="set('filterQuick',$event)"
 									:caption="capApp.filterQuick"
 									:modelValue="field.filterQuick"
+									:readonly
 								/>
 							</template>
 						</div>
@@ -615,7 +637,7 @@ let MyBuilderFieldOptions = {
 				<tr v-if="isData && !isFiles && !isDrawing && !isRelationship && !isDate && !isDatetime && !isTime && !isIFrame">
 					<td>{{ capGen.alignment }}</td>
 					<td>
-						<select v-model="alignment">
+						<select v-model="alignment" :disabled="readonly">
 							<option value="def">{{ capGen.alignmentHor.left }}</option>
 							<option value="end">{{ capGen.alignmentHor.right }}</option>
 						</select>
@@ -628,11 +650,12 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="setIndexAttribute('date0',$event.target.value)"
+								:disabled="readonly"
 								:value="getIndexAttributeId(field.indexDate0,field.attributeIdDate0,false,null)"
 							>
 								<option :value="getIndexAttributeId(null,null,false,null)">-</option>
 								<optgroup
-									v-for="j in field.query.joins"
+									v-for="j in query.joins"
 									:label="j.index+' '+relationIdMap[j.relationId].name"
 								>
 									<option
@@ -650,11 +673,12 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="setIndexAttribute('date1',$event.target.value)"
+								:disabled="readonly"
 								:value="getIndexAttributeId(field.indexDate1,field.attributeIdDate1,false,null)"
 							>
 								<option :value="getIndexAttributeId(null,null,false,null)">-</option>
 								<optgroup
-									v-for="j in field.query.joins"
+									v-for="j in query.joins"
 									:label="j.index+' '+relationIdMap[j.relationId].name"
 								>
 									<option
@@ -672,11 +696,12 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="setIndexAttribute('color',$event.target.value)"
+								:disabled="readonly"
 								:value="getIndexAttributeId(field.indexColor,field.attributeIdColor,false,null)"
 							>
 								<option :value="getIndexAttributeId(null,null,false,null)">-</option>
 								<optgroup
-									v-for="j in field.query.joins"
+									v-for="j in query.joins"
 									:label="j.index+' '+relationIdMap[j.relationId].name"
 								>
 									<option
@@ -695,6 +720,7 @@ let MyBuilderFieldOptions = {
 							<td>
 								<select
 									@input="setInt('days',$event.target.value,false)"
+									:disabled="readonly"
 									:value="field.days"
 								>
 									<option :value="1" >{{ capCal.option.days1  }}</option>
@@ -711,6 +737,7 @@ let MyBuilderFieldOptions = {
 								<my-bool
 									@update:modelValue="set('daysToggle',$event)"
 									:modelValue="field.daysToggle"
+									:readonly
 								/>
 							</td>
 						</tr>
@@ -725,6 +752,7 @@ let MyBuilderFieldOptions = {
 							<td>
 								<select
 									@input="setNull('ganttSteps',$event.target.value)"
+									:disabled="readonly"
 									:value="field.ganttSteps"
 								>
 									<option value="days" >{{ capApp.option.ganttStepsDays }}</option>
@@ -738,6 +766,7 @@ let MyBuilderFieldOptions = {
 								<my-bool
 									@update:modelValue="set('ganttStepsToggle',$event)"
 									:modelValue="field.ganttStepsToggle"
+									:readonly
 								/>
 							</td>
 						</tr>
@@ -748,6 +777,7 @@ let MyBuilderFieldOptions = {
 							<my-bool
 								@update:modelValue="set('ics',$event)"
 								:modelValue="field.ics"
+								:readonly
 							/>
 						</td>
 					</tr>
@@ -757,6 +787,7 @@ let MyBuilderFieldOptions = {
 							<td>
 								<input
 									@input="setInt('dateRange0',$event.target.value * 86400,false)"
+									:disabled="readonly"
 									:placeholder="capApp.dateRangeHint"
 									:value="field.dateRange0 / 86400"
 								/>
@@ -767,6 +798,7 @@ let MyBuilderFieldOptions = {
 							<td>
 								<input
 									@input="setInt('dateRange1',$event.target.value * 86400,false)"
+									:disabled="readonly"
 									:placeholder="capApp.dateRangeHint"
 									:value="field.dateRange1 / 86400"
 								/>
@@ -782,19 +814,22 @@ let MyBuilderFieldOptions = {
 							<div class="row gap" v-if="field.basis !== 0">
 								<input class="short"
 									@input="setInt('basis',$event.target.value,false)"
+									:disabled="readonly"
 									:value="field.basis"
 								/>
 								<my-button image="add.png"
 									@trigger="setInt('basis',field.basis+50,false)"
+									:active="!readonly"
 								/>
 								<my-button image="remove.png"
 									@trigger="setInt('basis',field.basis-50,false)"
-									:active="field.basis >= 50"
+									:active="field.basis >= 50 && !readonly"
 								/>
 							</div>
 							<my-button
 								v-if="field.basis === 0"
 								@trigger="setInt('basis',300,false)"
+								:active="!readonly"
 								:caption="capApp.fieldSize0"
 								:naked="true"
 							/>
@@ -806,14 +841,16 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<input class="short"
 									@input="setInt('grow',$event.target.value,false)"
+									:disabled="readonly"
 									:value="field.grow"
 								/>
 								<my-button image="add.png"
 									@trigger="setInt('grow',field.grow+1,false)"
+									:active="!readonly"
 								/>
 								<my-button image="remove.png"
 									@trigger="setInt('grow',field.grow-1,false)"
-									:active="field.grow > 0"
+									:active="field.grow > 0 && !readonly"
 								/>
 							</div>
 						</td>
@@ -823,6 +860,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<input
 								@input="setInt('perMax',$event.target.value,false)"
+								:disabled="readonly"
 								:value="field.perMax"
 							/>
 						</td>
@@ -833,14 +871,16 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<input class="short"
 									@input="setInt('shrink',$event.target.value,false)"
+									:disabled="readonly"
 									:value="field.shrink"
 								/>
 								<my-button image="add.png"
 									@trigger="setInt('shrink',field.shrink+1,false)"
+									:active="!readonly"
 								/>
 								<my-button image="remove.png"
 									@trigger="setInt('shrink',field.shrink-1,false)"
-									:active="field.shrink > 0"
+									:active="field.shrink > 0 && !readonly"
 								/>
 							</div>
 						</td>
@@ -850,6 +890,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<input
 								@input="setInt('perMin',$event.target.value,false)"
+								:disabled="readonly"
 								:value="field.perMin"
 							/>
 						</td>
@@ -858,19 +899,21 @@ let MyBuilderFieldOptions = {
 						<td colspan="2"><b>{{ capApp.containerContent }}</b></td>
 					</tr>
 					<tr>
-						<td>{{ capApp.fieldDirection }}</td>
+						<td>{{ capGen.direction }}</td>
 						<td>
 							<div class="row gap">
 								<select
 									@input="set('direction',$event.target.value)"
+									:disabled="readonly"
 									:value="field.direction"
 								>
-									<option value="row">row</option>
-									<option value="column">column</option>
+									<option value="row">{{ capGen.row }}</option>
+									<option value="column">{{ capGen.column }}</option>
 								</select>
 								<my-button
 									@trigger="set('direction',field.direction === 'row' ? 'column' : 'row' )"
-									:captionTitle="capApp.fieldDirection+': '+field.direction"
+									:active="!readonly"
+									:captionTitle="capGen.direction+': '+field.direction"
 									:image="field.direction === 'row' ? 'flexRow.png' : 'flexColumn.png'"
 								/>
 							</div>
@@ -883,6 +926,7 @@ let MyBuilderFieldOptions = {
 								<my-bool
 									@update:modelValue="set('wrap',$event)"
 									:modelValue="field.wrap"
+									:readonly
 								/>
 								<my-button
 									:active="false"
@@ -899,6 +943,7 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<select
 									@input="set('justifyContent',$event.target.value)"
+									:disabled="readonly"
 									:value="field.justifyContent"
 								>
 									<option value="flex-start">flex-start</option>
@@ -923,6 +968,7 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<select
 									@input="set('alignItems',$event.target.value)"
+									:disabled="readonly"
 									:value="field.alignItems"
 								>
 									<option value="flex-start">flex-start</option>
@@ -946,7 +992,7 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<select
 									@input="set('alignContent',$event.target.value)"
-									:disabled="!field.wrap"
+									:disabled="!field.wrap || readonly"
 									:value="field.alignContent"
 								>
 									<option value="flex-start">flex-start</option>
@@ -975,6 +1021,7 @@ let MyBuilderFieldOptions = {
 								<span>{{ capApp.tabs }}</span>
 								<my-button image="add.png"
 									@trigger="tabAdd(i)"
+									:active="!readonly"
 									:caption="capGen.button.add"
 									:naked="true"
 								/>
@@ -997,34 +1044,37 @@ let MyBuilderFieldOptions = {
 									>
 										<template #item="{element,index}">
 											<tr>
-												<td><img class="action dragAnchor" src="images/drag.png" /></td>
+												<td><img class="action dragAnchor" src="images/drag.png" v-if="!readonly" /></td>
 												<td>T{{ typeof entityIdMapRef.tab[element.id] !== 'undefined' ? entityIdMapRef.tab[element.id] : '' }}</td>
 												<td>
 													<my-builder-caption
 														@update:modelValue="element.captions.tabTitle = $event;set('tabs',field.tabs)"
 														:language="builderLanguage"
 														:modelValue="element.captions.tabTitle"
+														:readonly
 													/>
 												</td>
 												<td>
 													<my-bool
 														@update:modelValue="element.contentCounter = $event;set('tabs',field.tabs)"
 														:modelValue="element.contentCounter"
+														:readonly
 													/>
 												</td>
 												<td>
 													<select class="short"
 														@input="element.state = $event.target.value;set('tabs',field.tabs)"
+														:disabled="readonly"
 														:value="element.state"
 													>
-														<option value="hidden">{{ capApp.stateHidden }}</option>
-														<option value="default">{{ capApp.stateDefault }}</option>
+														<option value="hidden">{{ capGen.hidden }}</option>
+														<option value="default">{{ capGen.default }}</option>
 													</select>
 												</td>
 												<td>
 													<my-button image="cancel.png"
 														@trigger="field.tabs.splice(index,1);set('tabs',field.tabs)"
-														:active="field.tabs.length > 1"
+														:active="field.tabs.length > 1 && !readonly"
 														:naked="true"
 													/>
 												</td>
@@ -1038,17 +1088,18 @@ let MyBuilderFieldOptions = {
 				</template>
 				
 				<template v-if="isKanban">
-					<tr v-if="field.query.relationId !== null">
+					<tr v-if="query.relationId !== null">
 						<td>{{ capApp.kanban.relationIndexData }}</td>
 						<td>
 							<div class="row gap">
 								<select
 									@input="setInt('relationIndexData',$event.target.value,true)"
+									:disabled="readonly"
 									:value="field.relationIndexData === null ? '' : field.relationIndexData"
 								>
 									<option value="">-</option>
 									<option
-										v-for="j in field.query.joins"
+										v-for="j in query.joins"
 										:value="j.index"
 									>{{ j.index+' '+relationIdMap[j.relationId].name }}</option>
 								</select>
@@ -1064,6 +1115,7 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<select
 									@input="setInt('relationIndexAxisX',$event.target.value,true)"
+									:disabled="readonly"
 									:value="field.relationIndexAxisX === null ? '' : field.relationIndexAxisX"
 								>
 									<option value="">-</option>
@@ -1084,6 +1136,7 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<select
 									@input="setInt('relationIndexAxisY',$event.target.value,true)"
+									:disabled="readonly"
 									:value="field.relationIndexAxisY === null ? '' : field.relationIndexAxisY"
 								>
 									<option value="">-</option>
@@ -1104,10 +1157,11 @@ let MyBuilderFieldOptions = {
 							<div class="row gap">
 								<select
 									@input="setNull('attributeIdSort',$event.target.value)"
+									:disabled="readonly"
 									:value="field.attributeIdSort === null ? '' : field.attributeIdSort"
 								>
 									<option value="">-</option>
-									<optgroup v-for="j in field.query.joins.filter(v => v.index === field.relationIndexData)"
+									<optgroup v-for="j in query.joins.filter(v => v.index === field.relationIndexData)"
 										:label="j.index+' '+relationIdMap[j.relationId].name"
 									>
 										<option
@@ -1132,6 +1186,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<select
 								@input="set('layout',$event.target.value)"
+								:disabled="readonly"
 								:value="field.layout"
 							>
 								<option value="table">table</option>
@@ -1144,6 +1199,7 @@ let MyBuilderFieldOptions = {
 						<td>
 							<input
 								@input="setInt('resultLimit',$event.target.value,false)"
+								:disabled="readonly"
 								:value="field.resultLimit"
 							/>
 						</td>
@@ -1154,12 +1210,14 @@ let MyBuilderFieldOptions = {
 							<input
 								v-if="field.autoRenew !== null"
 								@input="setInt('autoRenew',$event.target.value,true)"
+								:disabled="readonly"
 								:placeholder="capApp.autoRenewHint"
 								:value="field.autoRenew"
 							/>
 							<my-button
 								v-else
 								@trigger="setInt('autoRenew',300,false)"
+								:active="!readonly"
 								:caption="capApp.autoRenew0"
 								:naked="true"
 							/>
@@ -1171,6 +1229,7 @@ let MyBuilderFieldOptions = {
 							<my-bool
 								@update:modelValue="set('filterQuick',$event)"
 								:modelValue="field.filterQuick"
+								:readonly
 							/>
 						</td>
 					</tr>
@@ -1180,6 +1239,7 @@ let MyBuilderFieldOptions = {
 							<my-bool
 								@update:modelValue="set('csvImport',$event)"
 								:modelValue="field.csvImport"
+								:readonly
 							/>
 						</td>
 					</tr>
@@ -1189,6 +1249,7 @@ let MyBuilderFieldOptions = {
 							<my-bool
 								@update:modelValue="set('csvExport',$event)"
 								:modelValue="field.csvExport"
+								:readonly
 							/>
 						</td>
 					</tr>
@@ -1209,6 +1270,7 @@ let MyBuilderFieldOptions = {
 						<div class="row gap">
 							<select
 								@input="setNull('variableId',$event.target.value)"
+								:disabled="readonly"
 								:value="field.variableId"
 							>
 								<option value="">-</option>
@@ -1228,6 +1290,7 @@ let MyBuilderFieldOptions = {
 							<my-button image="add.png"
 								v-if="field.variableId === null"
 								@trigger="$emit('createNew','variable',{formId:formId})"
+								:active="!readonly"
 								:captionTitle="capGen.button.new"
 							/>
 							<my-button image="open.png"
@@ -1247,6 +1310,7 @@ let MyBuilderFieldOptions = {
 						<div class="row gap">
 							<select
 								@input="setNull('jsFunctionId',$event.target.value)"
+								:disabled="readonly"
 								:value="field.jsFunctionId"
 							>
 								<option value="">-</option>
@@ -1268,6 +1332,7 @@ let MyBuilderFieldOptions = {
 							<my-button image="add.png"
 								v-if="field.jsFunctionId === null"
 								@trigger="$emit('createNew','jsFunction',{formId:formId})"
+								:active="!readonly"
 								:captionTitle="capGen.button.new"
 							/>
 							<my-button image="open.png"
@@ -1283,31 +1348,48 @@ let MyBuilderFieldOptions = {
 				<tr v-if="hasOpenForm">
 					<td>{{ capApp.openForm }}</td>
 					<td>
-						<my-builder-open-form-input
-							@update:openForm="set('openForm',$event)"
+						<my-builder-open-form
+							@update:modelValue="set('openForm',$event)"
 							:allowAllForms="isButton"
 							:allowNewRecords="true"
 							:allowPopUpInline="isCalendar || isKanban || isList"
-							:joinsIndexMap="joinsIndexMap"
-							:joinsIndexMapField="joinsIndexMapField"
-							:module="module"
-							:openForm="field.openForm"
+							:joinsIndexMap
+							:joinsIndexMapField
+							:modelValue="field.openForm"
+							:module
+							:readonly
 						/>
 					</td>
 				</tr>
-				<tr v-if="isList && field.query.relationId !== null">
+				<tr v-if="isList && query.relationId !== null">
 					<td v-html="capApp.openFormBulk"></td>
 					<td>
-						<my-builder-open-form-input
-							@update:openForm="set('openFormBulk',$event)"
+						<my-builder-open-form
+							@update:modelValue="set('openFormBulk',$event)"
 							:allowAllForms="false"
 							:allowNewRecords="false"
 							:allowPopUpInline="true"
 							:forcePopUp="true"
-							:joinsIndexMap="joinsIndexMap"
-							:joinsIndexMapField="joinsIndexMapField"
-							:module="module"
-							:openForm="field.openFormBulk"
+							:joinsIndexMap
+							:joinsIndexMapField
+							:modelValue="field.openFormBulk"
+							:module
+							:readonly
+						/>
+					</td>
+				</tr>
+
+				<!-- open doc -->
+				<tr v-if="hasOpenDoc">
+					<td>{{ capGen.button.pdfCreate }}</td>
+					<td>
+						<my-builder-open-doc
+							@update:modelValue="set('openDoc',$event)"
+							:dataFields
+							:joinsIndexMap
+							:modelValue="field.openDoc"
+							:module
+							:readonly
 						/>
 					</td>
 				</tr>
@@ -1320,6 +1402,7 @@ let MyBuilderFieldOptions = {
 								<span>{{ capApp.collectionTitle }}</span>
 								<my-button image="add.png"
 									@trigger="collectionAdd"
+									:active="!readonly"
 									:caption="capGen.button.add"
 									:naked="true"
 								/>
@@ -1336,8 +1419,8 @@ let MyBuilderFieldOptions = {
 									:consumer="c"
 									:fixedCollection="false"
 									:flagsEnable="['multiValue']"
-									:module="module"
-									:readonly="false"
+									:module
+									:readonly
 									:showOnMobile="false"
 								/>
 								<span v-if="field.collections.length !== 0">{{ capApp.collectionHint }}</span>
@@ -1349,34 +1432,35 @@ let MyBuilderFieldOptions = {
 		</table>
 	</div>`,
 	props:{
-		builderLanguage:{ type:String, required:true },
-		dataFields:     { type:Array,  required:true },
-		entityIdMapRef: { type:Object, required:true },
-		field:          { type:Object, required:true },
-		formId:         { type:String, required:true },
-		joinsIndexMap:  { type:Object, required:true },
-		moduleId:       { type:String, required:true }
+		builderLanguage:{ type:String,  required:true },
+		dataFields:     { type:Array,   required:true },
+		entityIdMapRef: { type:Object,  required:true },
+		field:          { type:Object,  required:true },
+		formId:         { type:String,  required:true },
+		joinsIndexMap:  { type:Object,  required:true },
+		moduleId:       { type:String,  required:true },
+		readonly:       { type:Boolean, required:true }
 	},
 	emits:['createNew','set'],
 	computed:{
-		displayOptions:(s) => {
+		displayOptions:s => {
 			let out = ['default'];
 			if(s.isInteger && s.isDisplayDefault) out.push('rating','slider','login');
 			if(s.isString  && s.isDisplayDefault) out.push('password','email','phone','url');
 			if(s.isFiles)                         out.push('gallery');
 			return out;
 		},
-		joinsIndexMapField:(s) => {
-			return s.isQuery ? s.getJoinIndexMap(s.field.query.joins) : {};
+		joinsIndexMapField:s => {
+			return s.isQuery ? s.getJoinsIndexMap(s.query.joins) : {};
 		},
-		joinsKanbanAxis:(s) => {
+		joinsKanbanAxis:s => {
 			if(!s.isKanban || s.field.relationIndexData === null)
 				return [];
 
 			const joinData = s.joinsIndexMapField[s.field.relationIndexData];
-			return s.field.query.joins.filter(v => v.indexFrom === joinData.index || v.index === joinData.indexFrom);
+			return s.query.joins.filter(v => v.indexFrom === joinData.index || v.index === joinData.indexFrom);
 		},
-		presetIdMap:(s) => {
+		presetIdMap:s => {
 			if(!s.isRelationship)
 				return {};
 			
@@ -1393,7 +1477,7 @@ let MyBuilderFieldOptions = {
 			}
 			return map;
 		},
-		systemDefaults:(s) => {
+		systemDefaults:s => {
 			if(s.isRichtext || s.isBarcode || s.isIFrame) return [];
 			if(s.isDate)     return ['{CURR_DATE}'];
 			if(s.isDatetime) return ['{CURR_DATETIME}'];
@@ -1418,64 +1502,66 @@ let MyBuilderFieldOptions = {
 		},
 		
 		// simple states
-		content:          (s) => s.isVariable ? 'data' : s.field.content,
-		contentData:      (s) => s.isData && !s.isVariable ? s.attribute.content    : s.variable.content,
-		contentUse:       (s) => s.isData && !s.isVariable ? s.attribute.contentUse : s.variable.contentUse,
-		hasCaption:       (s) => s.isData || s.isHeader,
-		hasOpenForm:      (s) => !s.isVariable && (s.isButton || ((s.isList || s.isCalendar || s.isKanban || s.isRelationship) && s.field.query.relationId !== null)),
-		isBarcode:        (s) => s.isData && s.contentUse === 'barcode',
-		isBoolean:        (s) => s.isData && s.isAttributeBoolean(s.contentData),
-		isButton:         (s) => s.content === 'button',
-		isCalendar:       (s) => s.content === 'calendar',
-		isChart:          (s) => s.content === 'chart',
-		isContainer:      (s) => s.content === 'container',
-		isData:           (s) => s.content === 'data',
-		isDate:           (s) => s.isData && s.contentUse === 'date',
-		isDatetime:       (s) => s.isData && s.contentUse === 'datetime',
-		isDisplayDefault: (s) => s.isData && s.contentUse === 'default',
-		isDrawing:        (s) => s.isData && s.contentUse === 'drawing',
-		isFiles:          (s) => s.isData && s.isAttributeFiles(s.contentData),
-		isHeader:         (s) => s.content === 'header',
-		isIFrame:         (s) => s.isData && s.contentUse === 'iframe',
-		isInteger:        (s) => s.isData && s.isAttributeInteger(s.contentData),
-		isList:           (s) => s.content === 'list',
-		isKanban:         (s) => s.content === 'kanban',
-		isQuery:          (s) => s.isCalendar || s.isChart || s.isKanban || s.isList || s.isRelationship,
-		isTabs:           (s) => s.content === 'tabs',
-		isRegconfig:      (s) => s.isData && s.isAttributeRegconfig(s.contentData),
-		isRelationship:   (s) => s.isData && s.isAttributeRelationship(s.contentData),
-		isRelationship1N: (s) => s.isRelationship && (s.contentData === '1:n' || (s.field.outsideIn === true && s.contentData === 'n:1')),
-		isRichtext:       (s) => s.isData && s.contentUse === 'richtext',
-		isString:         (s) => s.isData && s.isAttributeString(s.contentData),
-		isTime:           (s) => s.isData && s.contentUse === 'time',
-		isVariable:       (s) => s.field.content === 'variable',
-		systemDefaultUsed:(s) => s.systemDefaults.includes(s.field.def),
+		content:          s => s.isVariable ? 'data' : s.field.content,
+		contentData:      s => s.isData && !s.isVariable ? s.attribute.content    : s.variable.content,
+		contentUse:       s => s.isData && !s.isVariable ? s.attribute.contentUse : s.variable.contentUse,
+		hasCaption:       s => s.isData || s.isHeader,
+		hasOpenDoc:       s => !s.isVariable && s.isButton,
+		hasOpenForm:      s => !s.isVariable && (s.isButton || ((s.isList || s.isCalendar || s.isKanban || s.isRelationship) && s.query.relationId !== null)),
+		isBarcode:        s => s.isData && s.contentUse === 'barcode',
+		isBoolean:        s => s.isData && s.isAttributeBoolean(s.contentData),
+		isButton:         s => s.content === 'button',
+		isCalendar:       s => s.content === 'calendar',
+		isChart:          s => s.content === 'chart',
+		isContainer:      s => s.content === 'container',
+		isData:           s => s.content === 'data',
+		isDate:           s => s.isData && s.contentUse === 'date',
+		isDatetime:       s => s.isData && s.contentUse === 'datetime',
+		isDisplayDefault: s => s.isData && s.contentUse === 'default',
+		isDrawing:        s => s.isData && s.contentUse === 'drawing',
+		isFiles:          s => s.isData && s.isAttributeFiles(s.contentData),
+		isHeader:         s => s.content === 'header',
+		isIFrame:         s => s.isData && s.contentUse === 'iframe',
+		isInteger:        s => s.isData && s.isAttributeInteger(s.contentData),
+		isList:           s => s.content === 'list',
+		isKanban:         s => s.content === 'kanban',
+		isQuery:          s => s.isCalendar || s.isChart || s.isKanban || s.isList || s.isRelationship,
+		isTabs:           s => s.content === 'tabs',
+		isRegconfig:      s => s.isData && s.isAttributeRegconfig(s.contentData),
+		isRelationship:   s => s.isData && s.isAttributeRelationship(s.contentData),
+		isRelationship1N: s => s.isRelationship && (s.contentData === '1:n' || (s.field.outsideIn === true && s.contentData === 'n:1')),
+		isRichtext:       s => s.isData && s.contentUse === 'richtext',
+		isString:         s => s.isData && s.isAttributeString(s.contentData),
+		isTime:           s => s.isData && s.contentUse === 'time',
+		isVariable:       s => s.field.content === 'variable',
+		query:            s => s.isQuery && s.field.query !== null ? s.field.query : s.getTemplateQuery(),
+		systemDefaultUsed:s => s.systemDefaults.includes(s.field.def),
 		
 		// stores
-		attribute:     (s) => !s.isData || s.attributeIdMap[s.field.attributeId] === undefined ? false : s.attributeIdMap[s.field.attributeId],
-		module:        (s) => s.moduleIdMap[s.moduleId],
-		variable:      (s) => !s.isVariable || s.variableIdMap[s.field.variableId] === undefined ? false : s.variableIdMap[s.field.variableId],
-		moduleIdMap:   (s) => s.$store.getters['schema/moduleIdMap'],
-		relationIdMap: (s) => s.$store.getters['schema/relationIdMap'],
-		attributeIdMap:(s) => s.$store.getters['schema/attributeIdMap'],
-		formIdMap:     (s) => s.$store.getters['schema/formIdMap'],
-		variableIdMap: (s) => s.$store.getters['schema/variableIdMap'],
-		capApp:        (s) => s.$store.getters.captions.builder.form,
-		capCal:        (s) => s.$store.getters.captions.calendar,
-		capGen:        (s) => s.$store.getters.captions.generic
+		attribute:     s => !s.isData || s.attributeIdMap[s.field.attributeId] === undefined ? false : s.attributeIdMap[s.field.attributeId],
+		module:        s => s.moduleIdMap[s.moduleId],
+		variable:      s => !s.isVariable || s.variableIdMap[s.field.variableId] === undefined ? false : s.variableIdMap[s.field.variableId],
+		moduleIdMap:   s => s.$store.getters['schema/moduleIdMap'],
+		relationIdMap: s => s.$store.getters['schema/relationIdMap'],
+		attributeIdMap:s => s.$store.getters['schema/attributeIdMap'],
+		formIdMap:     s => s.$store.getters['schema/formIdMap'],
+		variableIdMap: s => s.$store.getters['schema/variableIdMap'],
+		capApp:        s => s.$store.getters.captions.builder.form,
+		capCal:        s => s.$store.getters.captions.calendar,
+		capGen:        s => s.$store.getters.captions.generic
 	},
 	methods:{
 		// externals
 		getAttributeIcon,
-		getCollectionConsumerTemplate,
 		getDependentModules,
 		getDetailsFromIndexAttributeId,
 		getIndexAttributeId,
 		getItemTitle,
 		getItemTitlePath,
-		getJoinIndexMap,
-		getNilUuid,
-		getRandomInt,
+		getJoinsIndexMap,
+		getTemplateCollectionConsumer,
+		getTemplateQuery,
+		getTemplateTab,
 		isAttributeBoolean,
 		isAttributeFiles,
 		isAttributeInteger,
@@ -1487,7 +1573,7 @@ let MyBuilderFieldOptions = {
 		// actions
 		collectionAdd() {
 			let v = JSON.parse(JSON.stringify(this.field.collections));
-			v.push(this.getCollectionConsumerTemplate());
+			v.push(this.getTemplateCollectionConsumer());
 			this.set('collections',v);
 		},
 		collectionRemove(i) {
@@ -1521,7 +1607,7 @@ let MyBuilderFieldOptions = {
 		set(name,val) {
 			if(name === 'csvImport' && !val) {
 				// no CSV import, clear query lookups
-				let q = JSON.parse(JSON.stringify(this.field.query));
+				let q = JSON.parse(JSON.stringify(this.query));
 				q.lookups = [];
 				this.$emit('set','query',q);
 			}
@@ -1579,17 +1665,9 @@ let MyBuilderFieldOptions = {
 				image:'question.png'
 			});
 		},
-		tabAdd(i) {
+		tabAdd() {
 			let v = JSON.parse(JSON.stringify(this.field.tabs));
-			v.push({
-				id:'new_tab' + this.getRandomInt(1,99999),
-				contentCounter:false,
-				state:'default',
-				fields:[],
-				captions:{
-					tabTitle:{}
-				}
-			});
+			v.push(this.getTemplateTab());
 			this.set('tabs',v);
 		}
 	}

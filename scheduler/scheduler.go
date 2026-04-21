@@ -16,13 +16,13 @@ import (
 	"r3/log"
 	"r3/repo"
 	"r3/schema"
+	"r3/spooler/doc_create"
 	"r3/spooler/file_process"
 	"r3/spooler/mail_attach"
 	"r3/spooler/mail_receive"
 	"r3/spooler/mail_send"
 	"r3/spooler/rest_send"
 	"r3/tools"
-	"r3/transfer"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -66,12 +66,13 @@ type taskSchedule struct {
 }
 
 var (
-	change_mx                              = &sync.Mutex{}
-	loadTasks                              = true // if true, tasks are reloaded from the database on next run
-	loadCounter             int            = 0    // number of times tasks were loaded - used to check whether tasks were reloaded during execution
-	nextExecutionUnix       int64          = 0    // unix time of next (earliest) task to run
-	oneDayInSeconds         int64          = 60 * 60 * 24
-	tasks                   []task         // all tasks
+	loadCounter             int            = 0               // number of times tasks were loaded - used to check whether tasks were reloaded during execution
+	loadTasks               atomic.Bool                      // if true, tasks are reloaded from the database on next run
+	nextExecutionUnix       atomic.Int64                     // unix time of next (earliest) task to run
+	secondsOneDay           int64          = 60 * 60 * 24    // for easy reference, 1 day in seconds
+	secondsKeepNewFiles     int64          = 60 * 60 * 8     // how long to keep new files with no references (in case record is not saved yet)
+	tasks                   []task                           // all tasks
+	tasks_mx                               = &sync.RWMutex{} // control access to tasks
 	tasksDisabledMirrorMode []string       = []string{"adminMails", "backupRun", "mailAttach", "mailRetrieve", "mailSend", "restExecute"}
 	OsExit                  chan os.Signal = make(chan os.Signal)
 
@@ -84,6 +85,9 @@ var (
 func Start() {
 	time.Sleep(loopIntervalStartWait)
 	log.Info(log.ContextScheduler, "started")
+
+	loadTasks.Store(true)
+	nextExecutionUnix.Store(0)
 
 	for {
 		time.Sleep(loopInterval)
@@ -107,9 +111,7 @@ func init() {
 		for {
 			select {
 			case <-cluster.SchedulerRestart:
-				change_mx.Lock()
-				loadTasks = true
-				change_mx.Unlock()
+				loadTasks.Store(true)
 			}
 		}
 	}()
@@ -117,22 +119,12 @@ func init() {
 
 // start tasks which schedules are due
 func runTasksBySchedule() error {
-	change_mx.Lock()
-	defer change_mx.Unlock()
 
-	// obtain read locks for import transfers & schema updates
-	// tasks should not be started while either is running
-	transfer.Import_mx.RLock()
-	defer transfer.Import_mx.RUnlock()
-
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
-
-	if loadTasks {
+	if loadTasks.Load() {
 		if err := load(); err != nil {
 			return err
 		}
-		nextExecutionUnix = 0
+		nextExecutionUnix.Store(0)
 	}
 
 	if len(tasks) == 0 {
@@ -140,8 +132,9 @@ func runTasksBySchedule() error {
 	}
 
 	// get earliest unix time for any task to run
-	if nextExecutionUnix == 0 {
+	if nextExecutionUnix.Load() == 0 {
 
+		tasks_mx.RLock()
 		var taskNameNext string
 		for _, t := range tasks {
 
@@ -150,21 +143,23 @@ func runTasksBySchedule() error {
 				continue
 			}
 
-			if nextExecutionUnix == 0 || t.runNextUnix < nextExecutionUnix {
-				nextExecutionUnix = t.runNextUnix
+			if nextExecutionUnix.Load() == 0 || t.runNextUnix < nextExecutionUnix.Load() {
+				nextExecutionUnix.Store(t.runNextUnix)
 				taskNameNext = t.nameLog
 			}
 		}
+		tasks_mx.RUnlock()
+
 		log.Info(log.ContextScheduler, fmt.Sprintf("will start next task at %s ('%s')",
-			time.Unix(nextExecutionUnix, 0), taskNameNext))
+			time.Unix(nextExecutionUnix.Load(), 0), taskNameNext))
 	}
 
 	// execute tasks if earliest next task date is reached
 	now := tools.GetTimeUnix()
-	if nextExecutionUnix != 0 && now >= nextExecutionUnix {
+	if nextExecutionUnix.Load() != 0 && now >= nextExecutionUnix.Load() {
 
 		// tasks are being executed, reset for next run
-		nextExecutionUnix = 0
+		nextExecutionUnix.Store(0)
 
 		// trigger all tasks that are scheduled
 		// if multiple schedules trigger for a PG function only execute one
@@ -180,7 +175,7 @@ func runTasksBySchedule() error {
 // start task directly (by name if system task or by a PG function schedule)
 func runTaskDirectly(systemTaskName string, pgFunctionId uuid.UUID, pgFunctionScheduleId uuid.UUID) {
 
-	change_mx.Lock()
+	tasks_mx.Lock()
 	taskIndexToRun := -1
 	if systemTaskName != "" {
 		for i, t := range tasks {
@@ -202,7 +197,7 @@ func runTaskDirectly(systemTaskName string, pgFunctionId uuid.UUID, pgFunctionSc
 			}
 		}
 	}
-	change_mx.Unlock()
+	tasks_mx.Unlock()
 
 	// if task was found, run it
 	if taskIndexToRun != -1 {
@@ -214,18 +209,18 @@ func runTaskDirectly(systemTaskName string, pgFunctionId uuid.UUID, pgFunctionSc
 func runTaskByIndex(taskIndex int) {
 
 	// store counter value before task, to check whether tasks were reloaded during
-	change_mx.Lock()
+	tasks_mx.Lock()
 	loadCounterPre := loadCounter
 
 	// skip, if task is already running
 	if tasks[taskIndex].running {
-		change_mx.Unlock()
+		tasks_mx.Unlock()
 		return
 	}
 	tasks[taskIndex].running = true
 	t := tasks[taskIndex]
 
-	change_mx.Unlock()
+	tasks_mx.Unlock()
 
 	// run task and store schedule meta data
 	var err error
@@ -267,14 +262,17 @@ func runTaskByIndex(taskIndex int) {
 	t.running = false
 
 	// update task list if it was not reloaded during execution
-	change_mx.Lock()
+	tasks_mx.Lock()
 	if loadCounterPre == loadCounter {
 		tasks[taskIndex] = t
 	}
-	change_mx.Unlock()
+	tasks_mx.Unlock()
 }
 
 func load() error {
+	tasks_mx.Lock()
+	defer tasks_mx.Unlock()
+
 	log.Info(log.ContextScheduler, "is updating its configuration")
 	tasks = nil
 
@@ -372,6 +370,9 @@ func load() error {
 		case "dbOptimize":
 			t.nameLog = "Database optimization"
 			t.fn = dbOptimize
+		case "docsGenerate":
+			t.nameLog = "Document generation"
+			t.fn = doc_create.DoAll
 		case "filesProcess":
 			t.nameLog = "File processing"
 			t.fn = file_process.DoAll
@@ -391,8 +392,8 @@ func load() error {
 			t.nameLog = "Email dispatch"
 			t.fn = mail_send.DoAll
 		case "repoCheck":
-			t.nameLog = "Check for updates from repository"
-			t.fn = repo.Update
+			t.nameLog = "Check for updates from repositories"
+			t.fn = repo.RefreshAll
 		case "restExecute":
 			t.nameLog = "REST call execution"
 			t.fn = rest_send.DoAll
@@ -459,7 +460,7 @@ func load() error {
 	}
 	rows.Close()
 
-	loadTasks = false
+	loadTasks.Store(false)
 	loadCounter++
 	return nil
 }

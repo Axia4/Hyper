@@ -4,6 +4,7 @@ import MyButtonGroup   from './comps/buttonGroup.js';
 import MyFilters       from './comps/filters.js';
 import MyHome          from './comps/home.js';
 import MyLabel         from './comps/label.js';
+import MyTabs          from './comps/tabs.js';
 import MyValueRich     from './comps/valueRich.js';
 import MyStore         from './stores/store.js';
 import {MyButtonCheck} from './comps/button.js';
@@ -35,7 +36,6 @@ import MyAdminMailSpooler    from './comps/admin/adminMailSpooler.js';
 import MyAdminMailTraffic    from './comps/admin/adminMailTraffic.js';
 import MyAdminModules        from './comps/admin/adminModules.js';
 import MyAdminOauthClients   from './comps/admin/adminOauthClients.js';
-import MyAdminRepo           from './comps/admin/adminRepo.js';
 import MyAdminRoles          from './comps/admin/adminRoles.js';
 import MyAdminScheduler      from './comps/admin/adminScheduler.js';
 import MyAdminSystemMsg      from './comps/admin/adminSystemMsg.js';
@@ -48,6 +48,8 @@ import MyBuilderArticles    from './comps/builder/builderArticles.js';
 import MyBuilderCaptionMap  from './comps/builder/builderCaptionMap.js';
 import MyBuilderCollection  from './comps/builder/builderCollection.js';
 import MyBuilderCollections from './comps/builder/builderCollections.js';
+import MyBuilderDoc         from './comps/builder/builderDoc.js';
+import MyBuilderDocs        from './comps/builder/builderDocs.js';
 import MyBuilderForm        from './comps/builder/builderForm.js';
 import MyBuilderForms       from './comps/builder/builderForms.js';
 import MyBuilderIcons       from './comps/builder/builderIcons.js';
@@ -61,6 +63,7 @@ import MyBuilderPgFunction  from './comps/builder/builderPgFunction.js';
 import MyBuilderPgFunctions from './comps/builder/builderPgFunctions.js';
 import MyBuilderRelation    from './comps/builder/builderRelation.js';
 import MyBuilderRelations   from './comps/builder/builderRelations.js';
+import MyBuilderReleases    from './comps/builder/builderReleases.js';
 import MyBuilderRole        from './comps/builder/builderRole.js';
 import MyBuilderRoles       from './comps/builder/builderRoles.js';
 import MyBuilderSearchBar   from './comps/builder/builderSearchBar.js';
@@ -96,6 +99,16 @@ const MyRouter = VueRouter.createRouter({
 		redirect:'/admin/config',
 		component:MyAdmin,
 		children:[
+			{
+				path:'modules-file',
+				component:MyAdminModules,
+				meta:{ target:'file' }
+			},
+			{
+				path:'modules-repo',
+				component:MyAdminModules,
+				meta:{ target:'repo' }
+			},
 			{ path:'backups',         component:MyAdminBackups },
 			{ path:'caption-map',     component:MyAdminCaptionMap },
 			{ path:'cluster',         component:MyAdminCluster },
@@ -113,7 +126,6 @@ const MyRouter = VueRouter.createRouter({
 			{ path:'mail-traffic',    component:MyAdminMailTraffic },
 			{ path:'modules',         component:MyAdminModules },
 			{ path:'oauth-clients',   component:MyAdminOauthClients },
-			{ path:'repo',            component:MyAdminRepo },
 			{ path:'roles',           component:MyAdminRoles },
 			{ path:'scheduler',       component:MyAdminScheduler },
 			{ path:'system-msg',      component:MyAdminSystemMsg }
@@ -227,6 +239,16 @@ const MyRouter = VueRouter.createRouter({
 				component:MyBuilderArticles,
 				props:true
 			},{
+				path:'docs/:id',
+				meta:{ nav:'docs', target:'module' },
+				component:MyBuilderDocs,
+				props:true
+			},{
+				path:'doc/:id',
+				meta:{ nav:'docs', target:'doc' },
+				component:MyBuilderDoc,
+				props:true
+			},{
 				path:'apis/:id',
 				meta:{ nav:'apis', target:'module' },
 				component:MyBuilderApis,
@@ -235,6 +257,11 @@ const MyRouter = VueRouter.createRouter({
 				path:'api/:id',
 				meta:{ nav:'apis', target:'api' },
 				component:MyBuilderApi,
+				props:true
+			},{
+				path:'releases/:id',
+				meta:{ nav:'releases', target:'module' },
+				component:MyBuilderReleases,
 				props:true
 			},{
 				path:'variables/:id',
@@ -317,6 +344,7 @@ const app = Vue.createApp(MyApp)
 	.component('my-button-group',MyButtonGroup)
 	.component('my-filters',MyFilters)
 	.component('my-label',MyLabel)
+	.component('my-tabs',MyTabs)
 	.component('my-value-rich',MyValueRich);
 
 app.directive('click-outside',{

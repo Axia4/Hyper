@@ -1,7 +1,6 @@
 import {srcBase64} from '../shared/image.js';
-export {MyBuilderForms as default};
 
-let MyBuilderForms = {
+export default {
 	name:'my-builder-forms',
 	template:`<div class="contentBox grow">
 		
@@ -64,7 +63,7 @@ let MyBuilderForms = {
 	},
 	computed:{
 		// simple
-		module:(s) => s.moduleIdMap[s.id] === 'undefined' ? false : s.moduleIdMap[s.id],
+		module:(s) => s.moduleIdMap[s.id] === undefined ? false : s.moduleIdMap[s.id],
 		
 		// stores
 		modules:    (s) => s.$store.getters['schema/modules'],

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"r3/cache"
 	"r3/config"
 	"r3/data"
@@ -30,9 +31,7 @@ func DoAll() error {
 		log.Info(log.ContextMail, "cannot start sending, no accounts defined")
 		return nil
 	}
-
 	now := tools.GetTimeUnix()
-	mails := make([]types.Mail, 0)
 
 	rows, err := db.Pool.Query(context.Background(), `
 		SELECT id, to_list, cc_list, bcc_list, subject, body, attempt_count,
@@ -47,17 +46,17 @@ func DoAll() error {
 	}
 	defer rows.Close()
 
+	mails := make([]types.Mail, 0)
 	for rows.Next() {
 		var m types.Mail
-
-		if err := rows.Scan(&m.Id, &m.ToList, &m.CcList, &m.BccList,
-			&m.Subject, &m.Body, &m.AttemptCount, &m.AccountId,
-			&m.RecordId, &m.AttributeId); err != nil {
+		if err := rows.Scan(&m.Id, &m.ToList, &m.CcList, &m.BccList, &m.Subject, &m.Body,
+			&m.AttemptCount, &m.AccountId, &m.RecordId, &m.AttributeId); err != nil {
 
 			return err
 		}
 		mails = append(mails, m)
 	}
+	rows.Close()
 
 	log.Info(log.ContextMail, fmt.Sprintf("found %d messages to be sent", len(mails)))
 
@@ -93,8 +92,6 @@ func DoAll() error {
 }
 
 func do(m types.Mail) error {
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
 
 	// get mail account to send with
 	var err error
@@ -162,7 +159,10 @@ func do(m types.Mail) error {
 	fileList := make([]string, 0)
 	if m.RecordId.Valid && m.AttributeId.Valid {
 
+		cache.Schema_mx.RLock()
 		atr, exists := cache.AttributeIdMap[m.AttributeId.Bytes]
+		cache.Schema_mx.RUnlock()
+
 		if !exists {
 			return fmt.Errorf("cannot attach file(s) from unknown attribute %s", m.AttributeId.String())
 		}
@@ -195,6 +195,7 @@ func do(m types.Mail) error {
 			}
 			files = append(files, f)
 		}
+		rows.Close()
 
 		for _, f := range files {
 			filePath := data.GetFilePathVersion(f.Id, f.Version)
@@ -215,32 +216,57 @@ func do(m types.Mail) error {
 		}
 	}
 
+	// sign with SMIME
+	if ma.SmimeSign {
+		if !ma.SmimePathCrt.Valid || !ma.SmimePathKey.Valid {
+			return fmt.Errorf("failed to sign message, either certificate or key path is not set")
+		}
+
+		smimeKeyPair, err := tls.LoadX509KeyPair(
+			filepath.Join(config.File.Paths.Certificates, ma.SmimePathCrt.String),
+			filepath.Join(config.File.Paths.Certificates, ma.SmimePathKey.String))
+
+		if err != nil {
+			return err
+		}
+		if err := msg.SignWithTLSCertificate(&smimeKeyPair); err != nil {
+			return err
+		}
+	}
+
 	// send mail
 	log.Info(log.ContextMail, fmt.Sprintf("sending message (%d attachments)",
 		len(msg.GetAttachments())))
 
-	client, err := mail.NewClient(ma.HostName, mail.WithPort(int(ma.HostPort)),
-		mail.WithUsername(ma.Username),
-		mail.WithPassword(ma.Password),
-		mail.WithTLSConfig(&tls.Config{ServerName: ma.HostName}))
-
-	if err != nil {
-		return err
+	// configure SMTP client
+	mailOptions := []mail.Option{mail.WithPort(int(ma.HostPort))}
+	switch ma.ConnectMethod {
+	case "plain":
+		mailOptions = append(mailOptions, mail.WithTLSPolicy(mail.NoTLS))
+	case "starttls":
+		mailOptions = append(mailOptions, mail.WithTLSPolicy(mail.TLSMandatory), mail.WithTLSConfig(&tls.Config{ServerName: ma.HostName}))
+	case "tls":
+		mailOptions = append(mailOptions, mail.WithSSL(), mail.WithTLSConfig(&tls.Config{ServerName: ma.HostName}))
+	default:
+		return fmt.Errorf("unsupported connect method '%s'", ma.ConnectMethod)
 	}
 
-	// use SSL if STARTTLS is disabled - otherwise STARTTLS is attempted
-	client.SetSSL(!ma.StartTls)
-
-	// apply authentication method
 	switch ma.AuthMethod {
 	case "login":
-		client.SetSMTPAuth(mail.SMTPAuthLogin)
+		mailOptions = append(mailOptions, mail.WithSMTPAuth(mail.SMTPAuthLogin), mail.WithUsername(ma.Username), mail.WithPassword(ma.Password))
 	case "plain":
-		client.SetSMTPAuth(mail.SMTPAuthPlain)
+		mailOptions = append(mailOptions, mail.WithSMTPAuth(mail.SMTPAuthPlain), mail.WithUsername(ma.Username), mail.WithPassword(ma.Password))
 	case "xoauth2":
-		client.SetSMTPAuth(mail.SMTPAuthXOAUTH2)
+		mailOptions = append(mailOptions, mail.WithSMTPAuth(mail.SMTPAuthXOAUTH2), mail.WithUsername(ma.Username), mail.WithPassword(ma.Password))
+	case "none":
+		// according to docs, if no auth is desired, SMTPAuth should not be set at all
 	default:
 		return fmt.Errorf("unsupported authentication method '%s'", ma.AuthMethod)
+	}
+
+	client, err := mail.NewClient(ma.HostName, mailOptions...)
+	if err != nil {
+		return err
 	}
 
 	// send message

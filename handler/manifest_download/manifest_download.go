@@ -40,8 +40,8 @@ type manifest struct {
 
 var manifestDefault = manifest{
 	Id:              "platform",
-	Name:            "Axia",
-	ShortName:       "Ax4",
+	Name:            "REI3",
+	ShortName:       "REI3",
 	Scope:           "/",
 	StartUrl:        "/",
 	Display:         "standalone",

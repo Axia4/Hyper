@@ -1,13 +1,14 @@
 import {getDependentModules} from '../shared/builder.js';
+import {dialogDeleteAsk}     from '../shared/dialog.js';
+import {copyValueDialog}     from '../shared/generic.js';
 import {
 	isAttributeFiles,
 	isAttributeRelationship
 } from '../shared/attribute.js';
 import {
-	copyValueDialog,
-	getNilUuid
-} from '../shared/generic.js';
-export {MyBuilderPreset as default};
+	getTemplatePreset,
+	getTemplatePresetValue
+} from '../shared/builderTemplate.js';
 
 const MyBuilderPresetValue = {
 	name:'my-builder-preset-value',
@@ -46,6 +47,7 @@ const MyBuilderPresetValue = {
 		</td>
 		<td colspan="2" v-if="!exists">
 			<my-button image="edit.png"
+				v-if="!readonly"
 				@trigger="$emit('set',null,false,null)"
 				:caption="capApp.valueNotSet"
 				:naked="true"
@@ -88,7 +90,7 @@ const MyBuilderPresetValue = {
 	}
 };
 
-const MyBuilderPreset = {
+export default {
 	name:'my-builder-preset',
 	components:{ MyBuilderPresetValue },
 	template:`<div class="app-sub-window under-header" @mousedown.self="$emit('close')">
@@ -126,7 +128,7 @@ const MyBuilderPreset = {
 						:caption="capGen.id"
 					/>
 					<my-button image="delete.png"
-						@trigger="delAsk"
+						@trigger="dialogDeleteAsk(del,capApp.dialog.delete)"
 						:active="!isNew && !readonly"
 						:cancel="true"
 						:caption="capGen.button.delete"
@@ -162,12 +164,12 @@ const MyBuilderPreset = {
 									<div class="row gap">
 										<my-button image="edit.png"
 											@trigger="childAllAddMissing"
-											:active="values.values.length < attributesValid.length"
+											:active="values.values.length < attributesValid.length && !readonly"
 											:caption="capApp.addMissing"
 										/>
 										<my-button image="lock.png"
 											@trigger="childAllToggleProtected"
-											:active="values.values.length !== 0 && attributesValid.length !== 0"
+											:active="values.values.length !== 0 && attributesValid.length !== 0 && !readonly"
 											:caption="capApp.toggleProtected"
 										/>
 									</div>
@@ -233,8 +235,10 @@ const MyBuilderPreset = {
 	methods:{
 		// externals
 		copyValueDialog,
+		dialogDeleteAsk,
 		getDependentModules,
-		getNilUuid,
+		getTemplatePreset,
+		getTemplatePresetValue,
 		isAttributeFiles,
 		isAttributeRelationship,
 		
@@ -282,13 +286,7 @@ const MyBuilderPreset = {
 			
 			// no preset value yet for attribute, create one
 			if(this.attributeIdMapValue[atrId] === undefined)
-				return this.values.values.push({
-					id:this.getNilUuid(),
-					attributeId:atrId,
-					presetIdRefer:presetIdRefer,
-					protected:protec,
-					value:value
-				});
+				return this.values.values.push(this.getTemplatePresetValue(atrId,presetIdRefer,protec,value));
 			
 			// update existing preset value
 			for(let i = 0, j = this.values.values.length; i < j; i++) {
@@ -320,13 +318,7 @@ const MyBuilderPreset = {
 		},
 		reset() {
 			if(this.id === null) {
-				this.values = {
-					id:null,
-					name:'',
-					relationId:this.relation.id,
-					protected:true,
-					values:[]
-				};
+				this.values = this.getTemplatePreset(this.relation.id);
 			}
 			else {
 				for(const p of this.relation.presets) {
@@ -340,22 +332,8 @@ const MyBuilderPreset = {
 		},
 		
 		// backend calls
-		delAsk() {
-			this.$store.commit('dialog',{
-				captionBody:this.capApp.dialog.delete,
-				buttons:[{
-					cancel:true,
-					caption:this.capGen.button.delete,
-					exec:this.del,
-					image:'delete.png'
-				},{
-					caption:this.capGen.button.cancel,
-					image:'cancel.png'
-				}]
-			});
-		},
-		del(rel) {
-			ws.send('preset','del',{id:this.id},true).then(
+		del() {
+			ws.send('preset','del',this.id,true).then(
 				this.closeReload,
 				this.$root.genericError
 			);

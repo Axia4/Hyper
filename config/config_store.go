@@ -14,16 +14,18 @@ import (
 var (
 	// configuration store (with values from database)
 	storeString      = make(map[string]string)
+	storeStringSlice = make(map[string][]string)
 	storeUint64      = make(map[string]uint64)
 	storeUint64Slice = make(map[string][]uint64)
 
-	NamesString = []string{"adminMails", "appName", "appNameShort", "backupDir",
+	NamesString = []string{"appName", "appNameShort", "backupDir",
 		"companyColorHeader", "companyColorLogin", "companyLoginImage",
 		"companyLogo", "companyLogoUrl", "companyName", "companyWelcome", "css",
 		"dbVersionCut", "exportPrivateKey", "iconPwa1", "iconPwa2",
-		"instanceId", "licenseFile", "publicHostName", "proxyUrl", "repoPass",
-		"repoPublicKeys", "repoUrl", "repoUser", "systemMsgText", "tokenSecret",
-		"updateCheckUrl", "updateCheckVersion"}
+		"instanceId", "licenseFile", "publicHostName", "proxyUrl", "repoPublicKeys",
+		"systemMsgText", "tokenSecret", "updateCheckUrl", "updateCheckVersion"}
+
+	NamesStringSlice = []string{"adminMailAddresses", "hotkeyModExcl"}
 
 	NamesUint64 = []string{"backupDaily", "backupMonthly", "backupWeekly",
 		"backupCountDaily", "backupCountMonthly", "backupCountWeekly",
@@ -32,12 +34,11 @@ var (
 		"dbTimeoutDataWs", "dbTimeoutIcs", "filesKeepDaysDeleted",
 		"fileVersionsKeepCount", "fileVersionsKeepDays", "icsDaysPost",
 		"icsDaysPre", "icsDownload", "imagerThumbWidth", "logApi", "logBackup",
-		"logCache", "logCluster", "logCsv", "logFile", "logImager", "logLdap",
-		"logMail", "logModule", "logOauth", "logServer", "logScheduler",
+		"logCache", "logCluster", "logCsv", "logDoc", "logFile", "logImager",
+		"logLdap", "logMail", "logModule", "logOauth", "logServer", "logScheduler",
 		"logTransfer", "logWebsocket", "logsKeepDays", "mailTrafficKeepDays",
 		"productionMode", "pwForceDigit", "pwForceLower", "pwForceSpecial",
-		"pwForceUpper", "pwLengthMin", "repoChecked", "repoFeedback",
-		"repoSkipVerify", "systemMsgDate0", "systemMsgDate1",
+		"pwForceUpper", "pwLengthMin", "systemMsgDate0", "systemMsgDate1",
 		"systemMsgMaintenance", "tokenExpiryHours", "tokenKeepEnable"}
 
 	NamesUint64Slice = []string{"loginBackgrounds"}
@@ -55,6 +56,23 @@ func SetString_tx(ctx context.Context, tx pgx.Tx, name string, value string) err
 		return err
 	}
 	storeString[name] = value
+	return nil
+}
+func SetStringSlice_tx(ctx context.Context, tx pgx.Tx, name string, value []string) error {
+	access_mx.Lock()
+	defer access_mx.Unlock()
+
+	if _, exists := storeStringSlice[name]; !exists {
+		return fmt.Errorf("configuration string slice value '%s' does not exist", name)
+	}
+	vJson, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if err := writeToDb_tx(ctx, tx, name, string(vJson)); err != nil {
+		return err
+	}
+	storeStringSlice[name] = value
 	return nil
 }
 func SetUint64_tx(ctx context.Context, tx pgx.Tx, name string, value uint64) error {
@@ -100,6 +118,18 @@ func GetString(name string) string {
 		return ""
 	}
 	return storeString[name]
+}
+func GetStringSlice(name string) []string {
+	access_mx.RLock()
+	defer access_mx.RUnlock()
+
+	if _, exists := storeStringSlice[name]; !exists {
+		log.Error(log.ContextServer, "configuration store get error",
+			fmt.Errorf("string slice value '%s' does not exist", name))
+
+		return make([]string, 0)
+	}
+	return storeStringSlice[name]
 }
 func GetUint64(name string) uint64 {
 	access_mx.RLock()
@@ -149,6 +179,9 @@ func LoadFromDb_tx(ctx context.Context, tx pgx.Tx) error {
 	for _, name := range NamesString {
 		storeString[name] = ""
 	}
+	for _, name := range NamesStringSlice {
+		storeStringSlice[name] = make([]string, 0)
+	}
 	for _, name := range NamesUint64 {
 		storeUint64[name] = 0
 	}
@@ -183,15 +216,18 @@ func LoadFromDb_tx(ctx context.Context, tx pgx.Tx) error {
 				return err
 			}
 			storeUint64Slice[name] = v
+		} else if _, exists := storeStringSlice[name]; exists {
+			var v []string
+			if err := json.Unmarshal([]byte(value), &v); err != nil {
+				return err
+			}
+			storeStringSlice[name] = v
 		}
 	}
 	return nil
 }
 
 func writeToDb_tx(ctx context.Context, tx pgx.Tx, name string, value string) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE instance.config SET value = $1 WHERE name = $2
-	`, value, name)
-
+	_, err := tx.Exec(ctx, `UPDATE instance.config SET value = $1 WHERE name = $2`, value, name)
 	return err
 }

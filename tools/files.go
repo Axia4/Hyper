@@ -10,47 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/h2non/filetype"
 )
-
-var (
-	// skipFsync controls whether to skip fsync() calls during file operations
-	// This is automatically set based on environment detection or REI3_SKIP_FSYNC env var
-	skipFsync bool
-)
-
-func init() {
-	// Check if fsync should be skipped based on environment
-	// This is useful in Docker/container environments where fsync can be very slow
-	if os.Getenv("REI3_SKIP_FSYNC") != "" {
-		skipFsync = strings.ToLower(os.Getenv("REI3_SKIP_FSYNC")) == "true" || os.Getenv("REI3_SKIP_FSYNC") == "1"
-	} else {
-		// Auto-detect Docker/container environment
-		skipFsync = isRunningInContainer()
-	}
-}
-
-// isRunningInContainer detects if the application is running in a container
-func isRunningInContainer() bool {
-	// Check for /.dockerenv file (Docker)
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		return true
-	}
-	
-	// Check cgroup for container indicators
-	if data, err := os.ReadFile("/proc/1/cgroup"); err == nil {
-		content := string(data)
-		if strings.Contains(content, "/docker") || 
-		   strings.Contains(content, "/lxc") || 
-		   strings.Contains(content, "/kubepods") {
-			return true
-		}
-	}
-	
-	return false
-}
 
 func GetFileContents(filePath string, removeUtf8Bom bool) ([]byte, error) {
 
@@ -166,13 +128,8 @@ func FileCopy(src string, dst string, copyModTime bool) error {
 		os.Remove(dst)
 		return err
 	}
-	
-	// Skip fsync in container environments for better performance
-	// Container storage drivers (overlay, aufs) can make fsync very slow
-	if !skipFsync {
-		if err := out.Sync(); err != nil {
-			return err
-		}
+	if err := out.Sync(); err != nil {
+		return err
 	}
 
 	if !copyModTime {
@@ -209,5 +166,5 @@ func PathCreateIfNotExists(path string, perm fs.FileMode) error {
 	if !os.IsNotExist(err) {
 		return err
 	}
-	return os.MkdirAll(path, perm)
+	return os.Mkdir(path, perm)
 }

@@ -116,19 +116,24 @@ export function getLinkMeta(display,value) {
 	return false;
 };
 
-export function getNumberFormatted(v,atr) {
+export function getNumberFormatted(v,length,lengthFract) {
 	let hasFraction = v % 1 !== 0;
 	let strNum      = String(v);
 	let strFraction = '';
+	const isNeg     = v < 0;
 	
 	if(hasFraction)
 		[strNum,strFraction] = strNum.split('.');
 
-	// apply fixed fraction component for numerics
-	if(atr.content === 'numeric' && atr.lengthFract !== 0) {
-		strFraction = strFraction.padEnd(atr.lengthFract,'0');
+	// apply fixed fraction component if defined
+	if(lengthFract !== 0) {
+		strFraction = strFraction.padEnd(lengthFract,'0').substring(0,lengthFract);
 		hasFraction = true;
 	}
+
+	// apply fixed integer component if defined
+	if(length !== 0)
+		strNum = strNum.substring(0,isNeg ? length-lengthFract+1 : length-lengthFract);
 	
 	strNum = strNum.replace(/\B(?=(\d{3})+(?!\d))/g,MyStore.getters.numberSepThousand);
 
@@ -143,10 +148,6 @@ export function getNilUuid() {
 
 export function getOrFallback(obj,name,fallbackValue) {
 	return obj?.[name] !== undefined ? JSON.parse(JSON.stringify(obj[name])) : fallbackValue;
-};
-
-export function isIdNilUuid(id) {
-	return id === getNilUuid();
 };
 
 export function getRandomInt(min,max) {
@@ -221,6 +222,11 @@ export function openLink(href,blank) {
 	document.body.appendChild(link);
 	link.click();
 	document.body.removeChild(link);
+};
+export function openLinkNoCache(href,blank) {
+	if(href.includes('?')) href += `&date=${Math.floor(new Date().getTime() / 1000)}`;
+	else                   href += `?date=${Math.floor(new Date().getTime() / 1000)}`;
+	return openLink(href,blank);
 };
 
 export function openDataImageAsNewTag(data) {

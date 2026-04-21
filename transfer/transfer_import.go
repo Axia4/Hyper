@@ -21,6 +21,7 @@ import (
 	"r3/schema/clientEvent"
 	"r3/schema/collection"
 	"r3/schema/compatible"
+	"r3/schema/doc"
 	"r3/schema/form"
 	"r3/schema/icon"
 	"r3/schema/jsFunction"
@@ -56,8 +57,13 @@ type importMeta struct {
 
 // imports extracted modules from given file paths
 func ImportFromFiles(ctx context.Context, filePathsImport []string) error {
-	Import_mx.Lock()
-	defer Import_mx.Unlock()
+
+	if len(filePathsImport) == 0 {
+		return fmt.Errorf("cannot import modules, no file paths defined")
+	}
+
+	import_mx.Lock()
+	defer import_mx.Unlock()
 
 	log.Info(log.ContextTransfer, fmt.Sprintf("start import for modules from file(s): '%s'", strings.Join(filePathsImport, "', '")))
 
@@ -177,7 +183,7 @@ func ImportFromFiles(ctx context.Context, filePathsImport []string) error {
 
 	// update schema cache
 	moduleIdsUpdated := make([]uuid.UUID, 0)
-	for id, _ := range moduleIdMapImportMeta {
+	for id := range moduleIdMapImportMeta {
 		moduleIdsUpdated = append(moduleIdsUpdated, id)
 	}
 
@@ -211,7 +217,7 @@ func importModule_tx(ctx context.Context, tx pgx.Tx, mod types.Module, firstRun 
 		log.Info(log.ContextTransfer, fmt.Sprintf("set module '%s' v%d, %s",
 			mod.Name, mod.ReleaseBuild, mod.Id))
 
-		if err := importCheckResultAndApply(ctx, tx, module.Set_tx(ctx, tx, mod), mod.Id, idMapSkipped); err != nil {
+		if err := importCheckResultAndApply(ctx, tx, module.Set_tx(ctx, tx, mod, false), mod.Id, idMapSkipped); err != nil {
 			return err
 		}
 	}
@@ -263,7 +269,7 @@ func importModule_tx(ctx context.Context, tx pgx.Tx, mod types.Module, firstRun 
 		}
 		log.Info(log.ContextTransfer, fmt.Sprintf("set relation %s", e.Id))
 
-		if err := importCheckResultAndApply(ctx, tx, relation.Set_tx(ctx, tx, e), e.Id, idMapSkipped); err != nil {
+		if err := importCheckResultAndApply(ctx, tx, relation.Set_tx(ctx, tx, e, false), e.Id, idMapSkipped); err != nil {
 			return err
 		}
 	}
@@ -285,7 +291,7 @@ func importModule_tx(ctx context.Context, tx pgx.Tx, mod types.Module, firstRun 
 			}
 			log.Info(log.ContextTransfer, fmt.Sprintf("set PK attribute %s", e.Id))
 
-			if err := importCheckResultAndApply(ctx, tx, attribute.Set_tx(ctx, tx, e), e.Id, idMapSkipped); err != nil {
+			if err := importCheckResultAndApply(ctx, tx, attribute.Set_tx(ctx, tx, e, false), e.Id, idMapSkipped); err != nil {
 				return err
 			}
 		}
@@ -307,7 +313,7 @@ func importModule_tx(ctx context.Context, tx pgx.Tx, mod types.Module, firstRun 
 			}
 			log.Info(log.ContextTransfer, fmt.Sprintf("set attribute %s", e.Id))
 
-			if err := importCheckResultAndApply(ctx, tx, attribute.Set_tx(ctx, tx, e), e.Id, idMapSkipped); err != nil {
+			if err := importCheckResultAndApply(ctx, tx, attribute.Set_tx(ctx, tx, e, false), e.Id, idMapSkipped); err != nil {
 				return err
 			}
 		}
@@ -344,6 +350,22 @@ func importModule_tx(ctx context.Context, tx pgx.Tx, mod types.Module, firstRun 
 		log.Info(log.ContextTransfer, fmt.Sprintf("set API %s", e.Id))
 
 		if err := importCheckResultAndApply(ctx, tx, api.Set_tx(ctx, tx, e), e.Id, idMapSkipped); err != nil {
+			return err
+		}
+	}
+
+	// documents
+	for _, e := range mod.Docs {
+		run, err := importCheckRunAndSave(ctx, tx, firstRun, e.Id, idMapSkipped)
+		if err != nil {
+			return err
+		}
+		if !run {
+			continue
+		}
+		log.Info(log.ContextTransfer, fmt.Sprintf("set document %s", e.Id))
+
+		if err := importCheckResultAndApply(ctx, tx, doc.Set_tx(ctx, tx, e), e.Id, idMapSkipped); err != nil {
 			return err
 		}
 	}
@@ -564,18 +586,15 @@ func importModule_tx(ctx context.Context, tx pgx.Tx, mod types.Module, firstRun 
 
 			// special case
 			// presets can fail import because referenced, unprotected presets were deleted or unique constraints are broken
-			// if preset itself is unprotected, we try until the last loop and then give up
+			// if preset itself is unprotected, we just update the schema
 			if lastRun && !e.Protected {
-				log.Info(log.ContextTransfer, "import failed to resolve unprotected preset until last loop, it will be ignored")
-				if err := importCheckResultAndApply(ctx, tx, nil, e.Id, idMapSkipped); err != nil {
+				log.Info(log.ContextTransfer, fmt.Sprintf("import failed to create or update unprotected preset '%s' until last loop, it will be ignored", e.Id))
+				if err := importCheckResultAndApply(ctx, tx, preset.Set_tx(ctx, tx, e, true), e.Id, idMapSkipped); err != nil {
 					return err
 				}
 				continue
 			}
-
-			if err := importCheckResultAndApply(ctx, tx, preset.Set_tx(ctx, tx, e.RelationId,
-				e.Id, e.Name, e.Protected, e.Values), e.Id, idMapSkipped); err != nil {
-
+			if err := importCheckResultAndApply(ctx, tx, preset.Set_tx(ctx, tx, e, false), e.Id, idMapSkipped); err != nil {
 				return err
 			}
 		}
@@ -610,9 +629,7 @@ func importCheckResultAndApply(ctx context.Context, tx pgx.Tx, resultErr error, 
 		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT transfer_import`); err != nil {
 			return err
 		}
-		if _, exists := idMapSkipped[entityId]; exists {
-			delete(idMapSkipped, entityId)
-		}
+		delete(idMapSkipped, entityId)
 		return nil
 	}
 
@@ -627,11 +644,8 @@ func importCheckResultAndApply(ctx context.Context, tx pgx.Tx, resultErr error, 
 }
 
 func parseModulesFromPaths_tx(ctx context.Context, tx pgx.Tx, filePaths []string, moduleIdMapImportMeta map[uuid.UUID]importMeta) ([]types.Module, error) {
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
 
 	modules := make([]types.Module, 0)
-
 	log.Info(log.ContextTransfer, fmt.Sprintf("import is parsing %d module files", len(filePaths)))
 
 	// read all modules from file paths
@@ -664,7 +678,9 @@ func parseModulesFromPaths_tx(ctx context.Context, tx pgx.Tx, filePaths []string
 		}
 
 		// check whether module is imported anew or updated
+		cache.Schema_mx.RLock()
 		exModule, isModuleUpgrade := cache.ModuleIdMap[moduleId]
+		cache.Schema_mx.RUnlock()
 
 		if isModuleUpgrade {
 
@@ -720,7 +736,7 @@ func parseModulesFromPaths_tx(ctx context.Context, tx pgx.Tx, filePaths []string
 	moduleIdsSort := make([]uuid.UUID, 0)
 	moduleNames := make([]string, 0)
 
-	for id, _ := range moduleIdMapImportMeta {
+	for id := range moduleIdMapImportMeta {
 		moduleIdsSort = append(moduleIdsSort, id)
 	}
 	sort.SliceStable(moduleIdsSort, func(i, j int) bool {

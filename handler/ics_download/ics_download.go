@@ -37,9 +37,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cache.Schema_mx.RLock()
-	defer cache.Schema_mx.RUnlock()
-
 	// parse getters
 	fieldId, err := handler.ReadUuidGetterFromUrl(r, "field_id")
 	if err != nil {
@@ -113,7 +110,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// apply field filters
 	// some filters are not compatible with backend requests (field value, open form record ID, ...)
 	dataGet.Filters = data_query.ConvertQueryToDataFilter(
-		f.Query.Filters, login.Id, login.LanguageCode, make(map[string]string))
+		f.Query.Filters, login.Id, login.LanguageCode, 0, make(map[string]string))
 
 	// define ICS event range, if defined
 	dateRange0 := f.DateRange0
@@ -194,7 +191,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// add event summary expressions
 	for _, column := range f.Columns {
 
+		cache.Schema_mx.RLock()
 		atr, exists := cache.AttributeIdMap[column.AttributeId]
+		cache.Schema_mx.RUnlock()
+
 		if !exists {
 			handler.AbortRequest(w, handler.ContextIcsUpload, err, handler.ErrGeneral)
 			return
@@ -204,7 +204,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		dataGet.Expressions = append(dataGet.Expressions, data_query.ConvertColumnToExpression(
-			column, login.Id, login.LanguageCode, make(map[string]string)))
+			column, login.Id, login.LanguageCode, 0, make(map[string]string)))
 	}
 
 	// get data
@@ -288,9 +288,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			reflect.TypeOf(result.Values[0]).String() != "int64" ||
 			reflect.TypeOf(result.Values[1]).String() != "int64" {
 
-			handler.AbortRequest(w, handler.ContextIcsUpload, errors.New("invalid values for date"),
-				handler.ErrGeneral)
-
+			handler.AbortRequest(w, handler.ContextIcsUpload, errors.New("invalid values for date"), handler.ErrGeneral)
 			return
 		}
 
@@ -321,6 +319,16 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		summaryParts := make([]string, 0)
 		for i, value := range result.Values {
 			if i < 2 {
+				// skip date values
+				continue
+			}
+			if value == nil {
+				// skip null values
+				continue
+			}
+			switch value.(type) {
+			case bool:
+				// skip booleans, no use in calender view
 				continue
 			}
 			summaryParts = append(summaryParts, fmt.Sprintf("%v", value))

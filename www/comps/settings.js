@@ -1,11 +1,11 @@
-import {openLink}          from './shared/generic.js';
 import srcBase64Icon       from './shared/image.js';
 import {getCaption}        from './shared/language.js';
 import {set as setSetting} from './shared/settings.js';
 import {getUnixFormat}     from './shared/time.js';
 import MyInputColorWrap    from './inputColorWrap.js';
+import MyInputDateFormat   from './inputDateFormat.js';
+import MyInputNumberSep    from './inputNumberSep.js';
 import MyInputHotkey       from './inputHotkey.js';
-import MyTabs              from './tabs.js';
 import {
 	aesGcmDecryptBase64,
 	aesGcmDecryptBase64WithPhrase,
@@ -19,7 +19,6 @@ import {
 	pemImportPrivateEnc,
 	rsaGenerateKeys
 } from './shared/crypto.js';
-export {MySettings as default};
 
 const MySettingsEncryption = {
 	name:'my-settings-encryption',
@@ -822,7 +821,6 @@ const MySettingsClientEvents = {
 
 const MySettingsFixedTokens = {
 	name:'my-settings-fixed-tokens',
-	components:{MyTabs},
 	template:`<div>
 		<div class="settings-tokens" v-if="tokensFixed.length !== 0">
 			<table class="generic-table sticky-top bright default-inputs">
@@ -995,16 +993,18 @@ const MySettingsFixedTokens = {
 						<div class="column gap">
 							<span>{{ capApp.device.installStep2 }}</span>
 							<div class="row gap">
-								<my-button image="download.png"
-									@trigger="loadApp"
-									:active="tokenSet"
-									:caption="capApp.button.loadApp"
-								/>
-								<my-button image="download.png"
-									@trigger="loadCnf"
-									:active="tokenSet"
-									:caption="capApp.button.loadCnf"
-								/>
+								<a target="_blank" :href="tokenSet ? urlApp : null">
+									<my-button image="download.png"
+										:active="tokenSet"
+										:caption="capApp.button.loadApp"
+									/>
+								</a>
+								<a target="_blank" :href="tokenSet ? urlCnf : null">
+									<my-button image="download.png"
+										:active="tokenSet"
+										:caption="capApp.button.loadCnf"
+									/>
+								</a>
 							</div>
 						</div>
 					</li>
@@ -1021,10 +1021,9 @@ const MySettingsFixedTokens = {
 						<div class="column gap">
 							<span>{{ capApp.device.updateStep1 }}</span>
 							<div class="row gap">
-								<my-button image="download.png"
-									@trigger="loadApp"
-									:caption="capApp.button.loadApp"
-								/>
+								<a target="_blank" :href="urlApp">
+									<my-button image="download.png" :caption="capApp.button.loadApp" />
+								</a>
 							</div>
 						</div>
 					</li>
@@ -1072,6 +1071,29 @@ const MySettingsFixedTokens = {
 			return !s.tokenSet ? '' : uri;
 		},
 		tokenSet:(s) => s.tokenFixed !== '',
+		urlApp:(s) => `/client/download/?${[`os=${s.deviceOs}`,`token=${s.token}`].join('&')}`,
+		urlCnf:(s) => {
+			const langCode = s.languageCodesOfficial.includes(s.languageCode)
+				? s.languageCode : 'en_us';
+			
+			const isSsl = location.protocol.includes('https');
+			let port  = location.port;
+			
+			// known issue, empty is returned if port is default HTTP(S)
+			if(port === null || port === '')
+				port = isSsl ? '443' : '80';
+			
+			const call = [
+				`deviceName=${s.tokenName}`,
+				`hostName=${location.hostname}`,
+				`hostPort=${port}`,
+				`languageCode=${langCode}`,
+				`tokenFixed=${s.tokenFixed}`,
+				`token=${s.token}`,
+				`ssl=${ isSsl ? 1 : 0}`
+			];
+			return `/client/download/config/?${call.join('&')}`;
+		},
 		
 		// stores
 		appNameShort:         (s) => s.$store.getters['local/appNameShort'],
@@ -1107,35 +1129,8 @@ const MySettingsFixedTokens = {
 	methods:{
 		// externals
 		getUnixFormat,
-		openLink,
 		
 		// actions
-		loadApp() {
-			let call = [`os=${this.deviceOs}`,`token=${this.token}`];
-			this.openLink(`/client/download/?${call.join('&')}`,false);
-		},
-		loadCnf() {
-			let langCode = this.languageCodesOfficial.includes(this.languageCode)
-				? this.languageCode : 'en_us';
-			
-			let isSsl = location.protocol.includes('https');
-			let port  = location.port;
-			
-			// known issue, empty is returned if port is default HTTP(S)
-			if(port === null || port === '')
-				port = isSsl ? '443' : '80';
-			
-			let call = [
-				`deviceName=${this.tokenName}`,
-				`hostName=${location.hostname}`,
-				`hostPort=${port}`,
-				`languageCode=${langCode}`,
-				`tokenFixed=${this.tokenFixed}`,
-				`token=${this.token}`,
-				`ssl=${ isSsl ? 1 : 0}`
-			];
-			this.openLink(`/client/download/config/?${call.join('&')}`,false);
-		},
 		showSubWindow(target) {
 			this.tokenFixed    = '';
 			this.tokenFixedB32 = '';
@@ -1211,10 +1206,12 @@ const MySettingsFixedTokens = {
 	}
 };
 
-const MySettings = {
+export default {
 	name:'my-settings',
 	components:{
 		MyInputColorWrap,
+		MyInputDateFormat,
+		MyInputNumberSep,
 		MySettingsAccount,
 		MySettingsClientEvents,
 		MySettingsEncryption,
@@ -1267,42 +1264,17 @@ const MySettings = {
 						</tr>
 						<tr class="default-inputs">
 							<td>{{ capApp.dateFormat }}</td>
-							<td>
-								<select v-model="settingsInput.dateFormat">
-									<option value="Y-m-d">{{ capGen.dateFormat0 }}</option>
-									<option value="Y/m/d">{{ capGen.dateFormat1 }}</option>
-									<option value="d.m.Y">{{ capGen.dateFormat2 }}</option>
-									<option value="d/m/Y">{{ capGen.dateFormat3 }}</option>
-									<option value="m/d/Y">{{ capGen.dateFormat4 }}</option>
-								</select>
-							</td>
+							<td><my-input-date-format v-model="settingsInput.dateFormat" /></td>
 						</tr>
 						<tr><td colspan="2"><hr /></td></tr>
 						<tr><td colspan="2"><b>{{ capApp.titleSubNumbers }}</b></td></tr>
 						<tr class="default-inputs">
-							<td>{{ capApp.numberSepThousand }}</td>
-							<td>
-								<select v-model="settingsInput.numberSepThousand">
-									<option value=".">{{ capApp.option.numberSeparator.dot }}</option>
-									<option value=",">{{ capApp.option.numberSeparator.comma }}</option>
-									<option value="'">{{ capApp.option.numberSeparator.apos }}</option>
-									<option value="·">{{ capApp.option.numberSeparator.mdot }}</option>
-									<option value=" ">{{ capApp.option.numberSeparator.space }}</option>
-									<option value="0">{{ capApp.option.numberSeparator.none }}</option>
-								</select>
-							</td>
+							<td>{{ capGen.numberSepThousand }}</td>
+							<td><my-input-number-sep v-model="settingsInput.numberSepThousand" :allowNone="true" /></td>
 						</tr>
 						<tr class="default-inputs">
-							<td>{{ capApp.numberSepDecimal }}</td>
-							<td>
-								<select v-model="settingsInput.numberSepDecimal">
-									<option value=".">{{ capApp.option.numberSeparator.dot }}</option>
-									<option value=",">{{ capApp.option.numberSeparator.comma }}</option>
-									<option value="'">{{ capApp.option.numberSeparator.apos }}</option>
-									<option value="·">{{ capApp.option.numberSeparator.mdot }}</option>
-									<option value=" ">{{ capApp.option.numberSeparator.space }}</option>
-								</select>
-							</td>
+							<td>{{ capGen.numberSepDecimal }}</td>
+							<td><my-input-number-sep v-model="settingsInput.numberSepDecimal" :allowNone="false" /></td>
 						</tr>
 						<tr><td colspan="2"><hr /></td></tr>
 						<tr><td colspan="2"><b>{{ capApp.titleSubMisc }}</b></td></tr>
@@ -1526,13 +1498,23 @@ const MySettings = {
 		settings:             (s) => s.$store.getters.settings
 	},
 	mounted() {
+		window.addEventListener('keydown',this.handleHotkeys);
 		this.settingsInput = JSON.parse(JSON.stringify(this.settings));
-		this.$nextTick(function() {
-			this.settingsLoaded = true;
-		});
+		this.$nextTick(() => { this.settingsLoaded = true; });
+	},
+	unmounted() {
+		window.removeEventListener('keydown',this.handleHotkeys);
 	},
 	methods:{
 		// externals
-		setSetting
+		setSetting,
+
+		// actions
+		handleHotkeys(e) {
+			if(e.key === 'Escape') {
+				this.$emit('close');
+				e.preventDefault();
+			}
+		},
 	}
 };

@@ -35,9 +35,11 @@ const MyStore = Vuex.createStore({
 		colorMenuDefaultDark:'1e2022', // default menu color, if not overwritten, dark mode
 		config:{},                     // configuration values (admin only)
 		constants:{                    // constant variables, codes/messages/IDs
+			dragFieldContent:'dragDropPrevField', // content name for drag&drop preview fields
 			kdfIterations:10000,       // number of iterations for PBKDF2 key derivation function
+			keyLength:64,              // length of new symmetric keys for data encryption
 			languageCodesOfficial:[    // officially supported language codes
-				'en_us','de_de','es_es','eu_es','ca'
+				'en_us','de_de', 'es_es', 'eu_es'
 			],
 			loginLimitedFactor:3,      // factor, how many limited logins are enabled for each full login
 			loginType:{                // all login types, as defined in the backend
@@ -47,7 +49,7 @@ const MyStore = Vuex.createStore({
 				noAuth:'noAuth',
 				oauth:'oauth'
 			},
-			keyLength:64,              // length of new symmetric keys for data encryption
+			hotkeyMod:['ALT','CMD','CTRL','SHIFT'], // modifier keys for hotkeys
 			scrollFormId:'form-scroll' // ID of form page element (to recover scroll position during routing)
 		},
 		dialogCaptionTop:'',
@@ -57,13 +59,12 @@ const MyStore = Vuex.createStore({
 		dialogStyles:'',
 		dialogTextDisplay:'',          // display option (html, textarea, richtext)
 		dropdownElm:null,
-		feedback:false,                // feedback function is enabled
-		feedbackUrl:'',                // feedback receiver, URL of current repository
 		filesCopy:{                    // meta data for file copy (filled on copy, emptied on paste)
 			attributeId:null,
 			fileIds:[]
 		},
 		globalSearchInput:null,
+		hotkeyModExcl:[],              // disabled modifier keys for hotkeys
 		isAdmin:false,                 // user is admin
 		isAtDialog:false,              // app shows generic dialog
 		isAtFavorites:false,           // is the favorites menu entry active?
@@ -75,6 +76,7 @@ const MyStore = Vuex.createStore({
 		isAtModule:false,              // app currently shows a module (instead of Builder, admin panel, settings, etc.)
 		isCollapsedMenuApp:false,      // app menu is collapsed
 		isMobile:false,                // app runs on small screen (probably mobile)
+		isSecureContext:false,         // app runs in secure context (HTTPS or local access)
 		isWithoutMenuApp:false,        // session does not have an app menu, set via getter param (menu-app=0), 
 		isWithoutMenuHeader:false,     // session does not have a header menu, set via getter param (menu-header=0)
 		keyDownHandlers:[],            // global handlers, reacting for key down events (for hotkey events)
@@ -101,10 +103,11 @@ const MyStore = Vuex.createStore({
 		popUpFormGlobal:null,          // configuration of global pop-up form
 		productionMode:false,          // system in production mode, false if maintenance
 		pwaDomainMap:{},               // map of modules per PWA sub domain, key: sub domain, value: module ID
+		reposFeedback:[],              // list of repositories with feedback enabled, [ { id:UUID, name:'Prod', url:'https://my-repo.local' }, ... ]
 		routingGuards:[],              // functions to call before routing, abort if any returns falls
 		searchDictionaries:[],         // dictionaries used for full text search for this login, ['english', 'german', ...]
 		settings:{},                   // setting values for logged in user, key: settings name
-		sessionTimerStore:{},          // user session timer store for frontend functions,     { moduleId1:{ timerName1:{ id:jsTimerId, isInterval:true }, ... }, ... }
+		sessionTimerStore:{},          // user session timer store for frontend functions, { moduleId1:{ timerName1:{ id:jsTimerId, isInterval:true }, ... }, ... }
 		system:{},                     // system details (admin only)
 		systemMsg:{                    // system message
 			date0:0,                   // date from
@@ -280,10 +283,9 @@ const MyStore = Vuex.createStore({
 		captionMapCustom:        (state,payload) => state.captionMapCustom         = payload,
 		clusterNodeName:         (state,payload) => state.clusterNodeName          = payload,
 		dropdownElm:             (state,payload) => state.dropdownElm              = payload,
-		feedback:                (state,payload) => state.feedback                 = payload,
-		feedbackUrl:             (state,payload) => state.feedbackUrl              = payload,
 		filesCopy:               (state,payload) => state.filesCopy                = payload,
 		globalSearchInput:       (state,payload) => state.globalSearchInput        = payload,
+		hotkeyModExcl:           (state,payload) => state.hotkeyModExcl            = payload,
 		isAdmin:                 (state,payload) => state.isAdmin                  = payload,
 		isAtDialog:              (state,payload) => state.isAtDialog               = payload,
 		isAtFavorites:           (state,payload) => state.isAtFavorites            = payload,
@@ -296,6 +298,7 @@ const MyStore = Vuex.createStore({
 		isCollapsedMenuApp:      (state,payload) => state.isCollapsedMenuApp       = payload,
 		isMobile:                (state,payload) => state.isMobile                 = payload,
 		isNoAuth:                (state,payload) => state.isNoAuth                 = payload,
+		isSecureContext:         (state,payload) => state.isSecureContext          = payload,
 		isWithoutMenuApp:        (state,payload) => state.isWithoutMenuApp         = payload,
 		isWithoutMenuHeader:     (state,payload) => state.isWithoutMenuHeader      = payload,
 		loginHasClient:          (state,payload) => state.loginHasClient           = payload,
@@ -316,6 +319,7 @@ const MyStore = Vuex.createStore({
 		popUpFormGlobal:         (state,payload) => state.popUpFormGlobal          = payload,
 		productionMode:          (state,payload) => state.productionMode           = payload,
 		pwaDomainMap:            (state,payload) => state.pwaDomainMap             = payload,
+		reposFeedback:           (state,payload) => state.reposFeedback            = payload,
 		searchDictionaries:      (state,payload) => state.searchDictionaries       = payload,
 		settings:                (state,payload) => state.settings                 = payload,
 		system:                  (state,payload) => state.system                   = payload,
@@ -406,6 +410,13 @@ const MyStore = Vuex.createStore({
 			}
 			return out;
 		},
+		numberSepThousand:(state) => {
+			const sepDec = state.settings.numberSepDecimal  !== '0' ? state.settings.numberSepDecimal  : '';
+			const sepTho = state.settings.numberSepThousand !== '0' ? state.settings.numberSepThousand : '';
+
+			// if thousands separator is identical to decimal one, remove it - decimal has precedence
+			return sepTho !== sepDec ? sepTho : '';
+		},
 		patternStyle:(state) => {
 			return state.settings.pattern !== null
 				? `background-image:url('images/patterns/${state.settings.pattern}.webp');background-repeat:repeat-x`
@@ -453,10 +464,9 @@ const MyStore = Vuex.createStore({
 		dialogStyles:            (state) => state.dialogStyles,
 		dialogTextDisplay:       (state) => state.dialogTextDisplay,
 		dropdownElm:             (state) => state.dropdownElm,
-		feedback:                (state) => state.feedback,
-		feedbackUrl:             (state) => state.feedbackUrl,
 		filesCopy:               (state) => state.filesCopy,
 		globalSearchInput:       (state) => state.globalSearchInput,
+		hotkeyModExcl:           (state) => state.hotkeyModExcl,
 		isAdmin:                 (state) => state.isAdmin,
 		isAllowedMfa:            (state) => state.loginType === state.constants.loginType.local || state.loginType === state.constants.loginType.ldap,
 		isAllowedPwChange:       (state) => state.loginType === state.constants.loginType.local,
@@ -471,6 +481,7 @@ const MyStore = Vuex.createStore({
 		isCollapsedMenuApp:      (state) => state.isCollapsedMenuApp,
 		isMobile:                (state) => state.isMobile,
 		isNoAuth:                (state) => state.loginType === state.constants.loginType.noAuth,
+		isSecureContext:         (state) => state.isSecureContext,
 		isWithoutMenuApp:        (state) => state.isWithoutMenuApp,
 		isWithoutMenuHeader:     (state) => state.isWithoutMenuHeader,
 		keyDownHandlers:         (state) => state.keyDownHandlers,
@@ -493,12 +504,12 @@ const MyStore = Vuex.createStore({
 		moduleIdLast:            (state) => state.moduleIdLast,
 		moduleIdMapMeta:         (state) => state.moduleIdMapMeta,
 		numberSepDecimal:        (state) => state.settings.numberSepDecimal  !== '0' ? state.settings.numberSepDecimal  : '',
-		numberSepThousand:       (state) => state.settings.numberSepThousand !== '0' ? state.settings.numberSepThousand : '',
 		oauthClientIdMapOpenId:  (state) => state.oauthClientIdMapOpenId,
 		pageTitleFull:           (state) => state.pageTitleFull,
 		popUpFormGlobal:         (state) => state.popUpFormGlobal,
 		productionMode:          (state) => state.productionMode,
 		pwaDomainMap:            (state) => state.pwaDomainMap,
+		reposFeedback:           (state) => state.reposFeedback,
 		routingGuards:           (state) => state.routingGuards,
 		searchDictionaries:      (state) => state.searchDictionaries,
 		settings:                (state) => state.settings,

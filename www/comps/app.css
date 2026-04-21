@@ -8,6 +8,7 @@
 	--z-index-header-entry:60;
 	--z-index-header:50;               /* header, main menu, top of the page */
 	--z-index-form-pop-up:40;
+	--z-index-input-toolbar:20;        /* toolbars can include hover elements (TinyMCE code view) */
 	--z-index-input-date-month:19;
 	
 	/* builder / admin */
@@ -26,11 +27,9 @@
 	--z-index-calendar-month-caption:3;
 	--z-index-calendar-month-line:2;
 	--z-index-calendar-days-full-values:4;
-	--z-index-calendar-days-full-days:3;
 	--z-index-calendar-days-full-day:2;
 	
 	/* input field elements */
-	--z-index-field-input-toolbar:3;
 	--z-index-field-file-list:2;
 	--z-index-field-toggle-bool-first:3;
 	--z-index-field-toggle-bool-last:2;
@@ -56,11 +55,11 @@
 	
 	/**/
 	/* heights */
-	--row-height:38px;
-	--row-height-icon:27px;
 	--app-header-height:65px;
 	--field-header-height:46px;
 	--menu-line-height:36px;
+	--row-height-base:22px;
+	--row-padding-ver:2px;
 
 	/**/
 	/* font families */
@@ -126,9 +125,13 @@
 	--color-form-builder-columns:     hsl(226deg 25% 77%);
 	--color-form-builder-column-batch:hsl(199deg 28% 79%);
 	--color-form-builder-container:   hsl(99deg 47% 83%);
-	--color-form-builder-selected:    hsl(59deg 100% 50%);
+	--color-form-builder-hover:       hsla(57, 100%, 96%, 0.904);
+	--color-form-builder-selected:    hsla(59, 100%, 50%, 0.6);
 	--color-form-builder-tabs:        hsl(135deg 45% 78%);
 	--color-form-builder-tabs-active: hsl(135deg 54% 87%);
+
+	--color-doc-builder-field: hsl(0, 0%, 100%);
+	--color-doc-padding-margin:hsl(60, 9%, 87%);
 	
 	/**/
 	/* shadows */
@@ -297,8 +300,9 @@ hr{
 	background-color:var(--color-bg);
 
 	/* app wide variable overwrites */
-	--row-height:calc(22px + var(--spacing));
-	--row-height-icon:calc(11px + var(--spacing));
+	--row-height:calc(var(--row-height-base) + var(--spacing));
+	--row-height-content:calc(var(--row-height) - (var(--row-padding-ver)*2));
+	--row-height-icon:calc(var(--row-height-content) - 10px);
 }
 #app.login-visible{
 	height:auto;
@@ -591,15 +595,15 @@ hr{
 	flex-flow:row nowrap;
 	align-items:center;
 }
-.contentBox .content .contentPartHeader:last-child{
-	margin:0px;
+.contentBox .content .contentPartHeader.space-between{	
+	justify-content:space-between;
 }
-.contentBox .content .contentPartHeader img{
+.contentBox .content .contentPartHeader>img{
 	height:22px;
 	margin-right:9px;
 	filter:var(--image-filter);
 }
-.contentBox .content .contentPartHeader h1{
+.contentBox .content .contentPartHeader>h1{
 	margin:0px;
 }
 
@@ -662,6 +666,7 @@ table td.maximum{
 	flex:1 1 auto;
 }
 .default-inputs input[type=range]{
+	padding:0px;
 	background-color:transparent;
 	box-shadow:none;
 }
@@ -894,6 +899,16 @@ table td.maximum{
 	border-bottom:1px solid var(--color-border);
 	background-color:var(--color-bg);
 }
+.generic-table.auto-height>thead>tr>th,
+.generic-table.auto-height>tbody>tr>td{
+	height:auto;
+}
+.generic-table.topAligned>thead>tr>th,
+.generic-table.topAligned>tbody>tr>td,
+.generic-table>thead>tr>th.topAligned,
+.generic-table>tbody>tr>td.topAligned{
+	vertical-align:top;
+}
 .generic-table.bright>tbody>tr>td{
 	background-color:var(--color-input);
 }
@@ -905,6 +920,25 @@ table td.maximum{
 	position:sticky;
 	top:0px;
 	z-index:var(--z-index-admin-table-sticky-top);
+}
+.generic-table.no-wrap-text-header>thead>tr>th{
+	text-wrap:nowrap;
+}
+.generic-table.rows-contrast>tbody>tr:nth-child(even) td{
+	background-color:var(--color-list-row-even);
+}
+.generic-table>tbody>tr.row-contrast td{
+	background-color:var(--color-list-row-even);
+}
+.generic-table>tbody>tr.row-clickable:hover>td{
+	cursor:pointer;
+	outline:none;
+	filter:brightness(90%);
+	box-shadow:inset 0 -2px 0 0 var(--color-accent3-alt);
+	transition:filter 0.2s, box-shadow 0.5s;
+}
+.generic-table>tbody>tr.row-clickable.row-selected>td{
+	filter:brightness(80%);
 }
 .generic-table>thead>tr>th .mixed-header{
 	display:flex;
@@ -1091,15 +1125,6 @@ table td.maximum{
 	font-family:inherit;
 	flex:1 1 auto;
 }
-.feedback .submit-choice{
-	display:flex;
-	flex-flow:column nowrap;
-	margin:12px 0px 24px;
-}
-.feedback .submit-choice span{
-	margin:0px 0px 9px;
-	line-height:150%;
-}
 .feedback .submit-text{
 	display:flex;
 	flex-flow:row nowrap;
@@ -1275,7 +1300,7 @@ table td.maximum{
 	height:26px;
 }
 .module-hover-menu-entry-children{
-	margin-left:14px;
+	margin-left:4px;
 	display:flex;
 	flex-flow:column nowrap;
 }
@@ -1469,9 +1494,13 @@ table td.maximum{
 	--color-form-builder-columns:     hsl(176deg 9% 32%);
 	--color-form-builder-column-batch:hsl(176deg 2% 32%);
 	--color-form-builder-container:   hsl(125deg 17% 31%);
-	--color-form-builder-selected:    hsl(59deg 72% 44%);
+	--color-form-builder-hover:       hsla(59, 72%, 44%, 0.13);
+	--color-form-builder-selected:    hsla(59, 72%, 44%, 0.801);
 	--color-form-builder-tabs:        hsl(104deg 15% 32%);
 	--color-form-builder-tabs-active: hsl(104deg 12% 39%);
+
+	--color-doc-builder-field: hsl(0, 0%, 21%);
+	--color-doc-padding-margin:hsl(0, 0%, 17%);
 	
 	--border-input:1px solid var(--color-border);
 	--outline-input-focus:2px solid var(--color-accent1);

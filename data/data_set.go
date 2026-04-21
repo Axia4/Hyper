@@ -26,8 +26,7 @@ import (
 // if tuple needs to exist for joined relation to refer to, it will be created
 // each index provides tuple ID (0 if new)
 // each index provides values for its relation attributes or partner relation attributes (relationship attributes from other relation)
-func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSet,
-	loginId int64) (map[int]int64, error) {
+func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSet, loginId int64) (map[int]int64, error) {
 
 	cache.Schema_mx.RLock()
 	defer cache.Schema_mx.RUnlock()
@@ -38,8 +37,8 @@ func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSe
 	var indexRecordsCreated = make(map[int]bool) // created record IDs by index
 
 	// sort relation indexes, starting with source relation (index:0)
-	for index, _ := range dataSetsByIndex {
-		indexes = append(indexes, index)
+	for i := range dataSetsByIndex {
+		indexes = append(indexes, i)
 	}
 	sort.Ints(indexes)
 
@@ -55,20 +54,19 @@ func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSe
 			return indexRecordIds, handler.ErrSchemaUnknownRelation(dataSet.RelationId)
 		}
 
-		if isNewRecord && !authorizedRelation(loginId, dataSet.RelationId, types.AccessWrite) {
+		// check write access to relation
+		// if no attributes are to be SET for an existing record, WRITE permission is not required
+		//  case: joined record is to be created but existing base record is untouched, SET still includes base relation (to resolve relationship)
+		if (isNewRecord || len(dataSet.Attributes) != 0) && !authorizedRelation(loginId, dataSet.RelationId, types.AccessWrite) {
 			return indexRecordIds, errors.New(handler.ErrUnauthorized)
 		}
 
-		// check write access for updating attribute values
+		// check write access for updating attribute values & check for protected preset record values
+		attributeIdsWriteAccess := make([]uuid.UUID, 0)
 		for _, attribute := range dataSet.Attributes {
+			attributeIdsWriteAccess = append(attributeIdsWriteAccess, attribute.AttributeId)
 
-			if !authorizedAttribute(loginId, attribute.AttributeId, types.AccessWrite) {
-				return indexRecordIds, errors.New(handler.ErrUnauthorized)
-			}
-
-			// check for protected preset record values
 			for _, preset := range rel.Presets {
-
 				if cache.GetPresetRecordId(preset.Id) != dataSet.RecordId {
 					continue
 				}
@@ -80,12 +78,13 @@ func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSe
 						if !exists {
 							return indexRecordIds, handler.ErrSchemaUnknownAttribute(attribute.AttributeId)
 						}
-
-						return indexRecordIds, fmt.Errorf("cannot change attribute value '%s' of protected preset '%s'",
-							atr.Name, preset.Name)
+						return indexRecordIds, fmt.Errorf("cannot change attribute value '%s' of protected preset '%s'", atr.Name, preset.Name)
 					}
 				}
 			}
+		}
+		if !authorizedAttributes(loginId, attributeIdsWriteAccess, types.AccessWrite) {
+			return indexRecordIds, errors.New(handler.ErrUnauthorized)
 		}
 
 		// set data for record of given relation index
@@ -111,9 +110,8 @@ func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSe
 
 		// if existing record, get current values for log comparison after change
 		if useLog && !isNewRecord {
-			logRecordOld, err = collectCurrentValuesForLog_tx(ctx, tx,
-				dataSet.RelationId, dataSet.Attributes, fileAttributeIndexes,
-				dataSet.RecordId, loginId)
+			logRecordOld, err = collectCurrentValuesForLog_tx(ctx, tx, dataSet.RelationId, dataSet.Attributes,
+				fileAttributeIndexes, dataSet.RecordId, loginId)
 
 			if err != nil {
 				return indexRecordIds, err
@@ -121,26 +119,21 @@ func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSe
 		}
 
 		// set data for index
-		if err := setForIndex_tx(ctx, tx, index, dataSetsByIndex,
-			indexRecordIds, indexRecordsCreated, loginId); err != nil {
-
+		if err := setForIndex_tx(ctx, tx, index, dataSetsByIndex, indexRecordIds, indexRecordsCreated, loginId); err != nil {
 			return indexRecordIds, err
 		}
 
 		// set encrypted record keys
 		if rel.Encryption {
-			if err := data_enc.SetKeys_tx(ctx, tx, rel.Id,
-				indexRecordIds[index], dataSet.EncKeysSet); err != nil {
-
+			if err := data_enc.SetKeys_tx(ctx, tx, rel.Id, indexRecordIds[index], dataSet.EncKeysSet); err != nil {
 				return indexRecordIds, err
 			}
 		}
 
 		// set data log
 		if useLog {
-			if err := setLog_tx(ctx, tx, dataSet.RelationId, dataSet.Attributes,
-				fileAttributeIndexes, isNewRecord, logRecordOld.Values,
-				indexRecordIds[index], loginId); err != nil {
+			if err := setLog_tx(ctx, tx, dataSet.RelationId, dataSet.Attributes, fileAttributeIndexes,
+				isNewRecord, logRecordOld.Values, indexRecordIds[index], loginId); err != nil {
 
 				return indexRecordIds, fmt.Errorf("failed to set data log, %v", err)
 			}
@@ -151,9 +144,8 @@ func Set_tx(ctx context.Context, tx pgx.Tx, dataSetsByIndex map[int]types.DataSe
 
 // set data values for specific relation index
 // recursive call, if relationship tuple must be created first
-func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
-	dataSetsByIndex map[int]types.DataSet, indexRecordIds map[int]int64,
-	indexRecordsCreated map[int]bool, loginId int64) error {
+func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int, dataSetsByIndex map[int]types.DataSet,
+	indexRecordIds map[int]int64, indexRecordsCreated map[int]bool, loginId int64) error {
 
 	if _, exists := indexRecordsCreated[index]; exists {
 		return nil
@@ -178,9 +170,9 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 	}
 
 	// process values
-	names := make([]string, 0)       // attribute names for insert statement
-	params := make([]string, 0)      // value parameters for insert/update statement
-	values := make([]interface{}, 0) // values for insert/update statements
+	names := make([]string, 0)  // attribute names for insert statement
+	params := make([]string, 0) // value parameters for insert/update statement
+	values := make([]any, 0)    // values for insert/update statements
 
 	// values for relationship tuple IDs are dealt with separately
 	type relationshipValue struct {
@@ -210,7 +202,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 			switch v := attribute.Value.(type) {
 			case float64:
 				shipValues.values = append(shipValues.values, int64(v))
-			case []interface{}:
+			case []any:
 				for _, v1 := range v {
 					if v1 == nil || reflect.TypeOf(v1).String() != "float64" {
 						return fmt.Errorf("invalid type for relationship value")
@@ -257,8 +249,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 			WHERE "%s"."%s" = %s
 			%s
 		`, mod.Name, rel.Name, tableAlias, strings.Join(params, `, `), tableAlias,
-			schema.PkName, fmt.Sprintf("$%d", len(values)), policyFilter),
-			values...); err != nil {
+			schema.PkName, fmt.Sprintf("$%d", len(values)), policyFilter), values...); err != nil {
 
 			return err
 		}
@@ -347,8 +338,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 				INSERT INTO "%s"."%s" (%s)
 				VALUES (%s)
 				RETURNING "%s"
-			`, mod.Name, rel.Name, strings.Join(names, `, `),
-				strings.Join(params, `, `), schema.PkName)
+			`, mod.Name, rel.Name, strings.Join(names, `, `), strings.Join(params, `, `), schema.PkName)
 		}
 
 		if err := tx.QueryRow(ctx, insertQuery, values...).Scan(&newRecordId); err != nil {
@@ -400,18 +390,14 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 				if _, err := tx.Exec(ctx, fmt.Sprintf(`
 					UPDATE "%s"."%s" SET "%s" = NULL
 					WHERE "%s" = $1
-				`, shipMod.Name, shipRel.Name, shipAtr.Name,
-					shipAtr.Name), indexRecordIds[index]); err != nil {
-
+				`, shipMod.Name, shipRel.Name, shipAtr.Name, shipAtr.Name), indexRecordIds[index]); err != nil {
 					return err
 				}
 			} else {
 				if _, err := tx.Exec(ctx, fmt.Sprintf(`
 					DELETE FROM "%s"."%s"
 					WHERE "%s" = $1
-				`, shipMod.Name, shipRel.Name,
-					shipAtr.Name), indexRecordIds[index]); err != nil {
-
+				`, shipMod.Name, shipRel.Name, shipAtr.Name), indexRecordIds[index]); err != nil {
 					return err
 				}
 			}
@@ -425,10 +411,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 				UPDATE "%s"."%s" SET "%s" = NULL
 				WHERE "%s" = $1
 				AND "%s" <> ALL($2)
-			`, shipMod.Name, shipRel.Name, shipAtr.Name,
-				shipAtr.Name, schema.PkName), indexRecordIds[index],
-				shipValues.values); err != nil {
-
+			`, shipMod.Name, shipRel.Name, shipAtr.Name, shipAtr.Name, schema.PkName), indexRecordIds[index], shipValues.values); err != nil {
 				return err
 			}
 
@@ -436,9 +419,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 			if _, err := tx.Exec(ctx, fmt.Sprintf(`
 				UPDATE "%s"."%s" SET "%s" = $1
 				WHERE "%s" = ANY($2)
-			`, shipMod.Name, shipRel.Name, shipAtr.Name, schema.PkName),
-				indexRecordIds[index], shipValues.values); err != nil {
-
+			`, shipMod.Name, shipRel.Name, shipAtr.Name, schema.PkName), indexRecordIds[index], shipValues.values); err != nil {
 				return err
 			}
 		} else {
@@ -454,9 +435,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 					SELECT "%s" FROM "%s"."%s"
 					WHERE "%s" = $1
 				)
-			`, shipAtrNm.Name, shipMod.Name, shipRel.Name, shipAtr.Name),
-				indexRecordIds[index]).Scan(&valuesCurr); err != nil {
-
+			`, shipAtrNm.Name, shipMod.Name, shipRel.Name, shipAtr.Name), indexRecordIds[index]).Scan(&valuesCurr); err != nil {
 				return err
 			}
 
@@ -470,9 +449,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 					DELETE FROM "%s"."%s"
 					WHERE "%s" = $1
 					AND "%s" = $2
-				`, shipMod.Name, shipRel.Name, shipAtr.Name, shipAtrNm.Name),
-					indexRecordIds[index], value); err != nil {
-
+				`, shipMod.Name, shipRel.Name, shipAtr.Name, shipAtrNm.Name), indexRecordIds[index], value); err != nil {
 					return err
 				}
 			}
@@ -486,9 +463,7 @@ func setForIndex_tx(ctx context.Context, tx pgx.Tx, index int,
 				if _, err := tx.Exec(ctx, fmt.Sprintf(`
 					INSERT INTO "%s"."%s" ("%s","%s")
 					VALUES ($1,$2)
-				`, shipMod.Name, shipRel.Name, shipAtr.Name, shipAtrNm.Name),
-					indexRecordIds[index], value); err != nil {
-
+				`, shipMod.Name, shipRel.Name, shipAtr.Name, shipAtrNm.Name), indexRecordIds[index], value); err != nil {
 					return err
 				}
 			}
@@ -554,8 +529,7 @@ func collectCurrentValuesForLog_tx(ctx context.Context, tx pgx.Tx,
 	}
 
 	if len(results) != 1 {
-		return result, fmt.Errorf("1 record (ID %d) expected but got: %d",
-			recordId, len(results))
+		return result, fmt.Errorf("1 record (ID %d) expected but got: %d", recordId, len(results))
 	}
 	return results[0], nil
 }

@@ -15,7 +15,7 @@ import {
 } from './shared/generic.js';
 import {
 	fillRelationRecordIds,
-	getJoinIndexMap,
+	getJoinsIndexMap,
 	getQueryExpressions,
 	getRelationsJoined
 } from './shared/query.js';
@@ -47,7 +47,7 @@ const MyKanbanCard = {
 					<tr v-for="b in columnBatches">
 						<td v-if="b.caption !== null" class="kanban-label">{{ b.caption }}</td>
 						<td>
-							<div class="columnBatch kanbanCards" :class="{ vertical:b.vertical }">
+							<div class="columnBatch" :class="{ vertical:b.vertical }">
 								<my-value-rich
 									v-for="ind in b.columnIndexes.filter(v => values[v] !== null || columns[v].display === 'gallery')"
 									@clipboard="$emit('clipboard')"
@@ -519,7 +519,7 @@ const MyKanban = {
 		hasNullsInX:       (s) => s.attributeIdMap[s.attributeIdAxisX].nullable,
 		hasNullsInY:       (s) => s.attributeIdAxisY !== null && s.attributeIdMap[s.attributeIdAxisY].nullable,
 		joins:             (s) => s.fillRelationRecordIds(s.query.joins),
-		joinsIndexMap:     (s) => s.getJoinIndexMap(s.joins),
+		joinsIndexMap:     (s) => s.getJoinsIndexMap(s.joins),
 
 		// login options
 		choiceId:    (s) => s.$root.getOrFallback(s.loginOptions,'choiceId',s.choices.length === 0 ? null : s.choices[0].id),
@@ -570,7 +570,7 @@ const MyKanban = {
 		getCaption,
 		getChoiceFilters,
 		getColumnBatches,
-		getJoinIndexMap,
+		getJoinsIndexMap,
 		getQueryExpressions,
 		getRelationsJoined,
 		routeChangeFieldReload,
@@ -653,11 +653,11 @@ const MyKanban = {
 			
 			for(let r of rows) {
 				const recordId = r.indexRecordIds[relationIndex];
-				if(typeof recordId === 'undefined')
+				if(recordId === undefined)
 					return [];
 				
 				// store first occurrence of record only
-				if(recordId === null || typeof recordIdMapValues[recordId] !== 'undefined')
+				if(recordId === null || recordIdMapValues[recordId] !== undefined)
 					continue;
 				
 				let values = [];
@@ -724,10 +724,10 @@ const MyKanban = {
 					
 					// stop if no rows or relation indexes for either axis is invalid
 					if(res.payload.rows.length === 0 ||
-						res.payload.rows[0].indexRecordIds[this.relationIndexAxisX] === 'undefined' ||
+						res.payload.rows[0].indexRecordIds[this.relationIndexAxisX] === undefined ||
 						(
 							this.relationIndexAxisY !== null &&
-							res.payload.rows[0].indexRecordIds[this.relationIndexAxisY] === 'undefined'
+							res.payload.rows[0].indexRecordIds[this.relationIndexAxisY] === undefined
 						)
 					) {
 						this.$emit('record-count-change',0);
