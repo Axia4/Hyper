@@ -45,7 +45,7 @@
 			"bruteforceAttempts": "Bloquear hosts después de intentos",
 			"bruteforceCountBlocked": "Hosts bloqueados",
 			"bruteforceCountTracked": "Hosts rastreados",
-			"bruteforceDesc": "<p>This feature blocks clients, if they attempt to access the system repeatedly with invalid authentication. It is sensible for operation in the cloud, where public access is possible.</p><p>It does not make sense for local deployments or if the system is operated with a reverse proxy.</p>",
+			"bruteforceDesc": "<p>Esta función bloquea clientes si intentan acceder al sistema repetidamente con autenticación inválida. Tiene sentido para operación en la nube, donde el acceso público es posible.</p><p>No tiene sentido para despliegues locales o si el sistema se opera con un proxy inverso.</p>",
 			"bruteforceProtection": "Habilitar protección contra fuerza bruta",
 			"bruteforceTitle": "Protección contra fuerza bruta",
 			"builderMode": "Modo de constructor",
@@ -62,7 +62,7 @@
 				"pleaseRead": "Por favor, lee antes de guardar",
 				"productionMode": "El modo de mantenimiento se utiliza para actualizar, instalar o eliminar aplicaciones del sistema.<br /><br />Cambiar al modo de mantenimiento <b>cerrará la sesión de todos los usuarios sin permisos de administrador</b>."
 			},
-			"hotkeyModAvailable": "In some environments, it can be helpful to deactivate certain modifiers for global hotkeys to avoid interfering with other applications. Disabled keys are not available to users.",
+			"hotkeyModAvailable": "En algunos entornos, puede ser útil desactivar ciertos modificadores para teclas de acceso rápido globales para evitar interferir con otras aplicaciones. Las teclas deshabilitadas no están disponibles para los usuarios.",
 			"icsDaysPost": "Excluir eventos después de la fecha actual (en días)",
 			"icsDaysPre": "Excluir eventos antes de la fecha actual (en días)",
 			"icsDownload": "Habilitar suscripciones de calendario",
@@ -82,7 +82,7 @@
 			"pwTitle": "Configuración de contraseñas",
 			"title": "Configuración del sistema",
 			"titleGeneral": "General",
-			"titleGlobalHotkeys": "Global hotkeys",
+			"titleGlobalHotkeys": "Teclas de acceso rápido globales",
 			"titleIcs": "Suscripciones de calendario",
 			"titleLoginBackgrounds": "Fondos de inicio de sesión",
 			"titleLogins": "Usuarios",
@@ -166,7 +166,7 @@
 			"keyAttributeHint": "Ejemplo: objectGUID",
 			"loginAttribute": "Atributo de nombre de usuario",
 			"loginAttributeHint": "Ejemplo: sAMAccountName",
-			"loginMetaMap": "Map user details to LDAP attributes",
+			"loginMetaMap": "Asignar roles por membresía de grupo<br />(desactiva la asignación manual de roles)",
 			"memberAttribute": "Atributo de miembro",
 			"memberAttributeHint": "Ejemplo: memberOf",
 			"msAdExt": "Extensiones de Microsoft AD",
@@ -236,8 +236,8 @@
 			"limitedDesc": "Cuando un usuario tiene como máximo un solo rol asignado, se cuenta como un usuario 'limitado'. Útil cuando solo se necesita acceso a partes de una aplicación para cosas como manejo de solicitudes o envío de formularios.<br /><br />Los usuarios limitados no pueden tener acceso de administrador o público y se toman de un grupo de licencias separado.",
 			"noAuth": "Acceso público",
 			"oauth": "OAuth client",
-			"oauthAssignActive": "Roles are assigned by ID token claim",
-			"oauthMeta": "Details are set by ID token claims",
+			"oauthAssignActive": "Los roles se asignan mediante reclamación de token de ID",
+			"oauthMeta": "Los detalles se establecen mediante reclamaciones de token de ID",
 			"password": "Establecer nueva contraseña",
 			"roleContentAdmin": "Admin",
 			"roleContentOther": "Especial",
@@ -258,21 +258,21 @@
 			"tokenExpiryHours": "Tiempo máximo de sesión en horas"
 		},
 		"loginMeta": {
-			"department": "Department",
+			"department": "Departamento",
 			"dialog": {
 				"notUniqueEmail": "La misma dirección de correo electrónico también ha sido asignada a un usuario diferente."
 			},
-			"email": "Email",
-			"location": "Location",
-			"nameDisplay": "Display name",
-			"nameFore": "Forename",
-			"nameSur": "Surname",
-			"notes": "Description",
-			"organization": "Organization",
-			"phone": "Phone",
-			"phoneFax": "Fax",
-			"phoneLandline": "Landline",
-			"phoneMobile": "Mobile"
+			"email": "Correo electrónico",
+			"location": "Ubicación",
+			"nameDisplay": "Nombre para mostrar",
+			"nameFore": "Nombre",
+			"nameSur": "Apellido",
+			"notes": "Descripción",
+			"organization": "Organización",
+			"phone": "Teléfono",
+			"phoneFax": "Faxímil",
+			"phoneLandline": "Teléfono fijo",
+			"phoneMobile": "Móvil"
 		},
 		"loginSessions": {
 			"noData": "No hay sesiones disponibles",
@@ -339,7 +339,7 @@
 			"account": "Cuenta de correo",
 			"accountAuthMethod": "Método de autenticación",
 			"accountAuthMethodHintLogin": "Autenticación básica mediante nombre de usuario y contraseña. Opción de compatibilidad para la autenticación SMTP heredada de Office 365.",
-			"accountAuthMethodHintNone": "No authentication. Generally not recommended.",
+			"accountAuthMethodHintNone": "Sin autenticación. En general no se recomienda.",
 			"accountAuthMethodHintPlain": "Autenticación básica mediante nombre de usuario y contraseña.",
 			"accountAuthMethodHintXOAuth2": "Autenticación mediante OAuth 2.0, a veces llamada 'Autenticación moderna'. Requerida por algunos proveedores para acceder a sus servicios.",
 			"accountHost": "Nombre del host",
@@ -351,9 +351,9 @@
 			"accountPass": "Contraseña",
 			"accountPort": "Puerto",
 			"accountSendAs": "Dirección de envío",
-			"accountSendAsHint": "This defines with which email address messages are being sent. This is most often the primary email address of the mailbox, though some allow different send addresses.<br /><br />You can optionally set a display name for the sender, by setting the send address as such:<br /><code><b>\"My Display Name\" &lt;my-email@my-host.com&gt;</b></code>",
+			"accountSendAsHint": "Esto define con qué dirección de correo electrónico se envían los mensajes. La mayoría de las veces es la dirección de correo electrónico principal del buzón, aunque algunos permiten direcciones de envío diferentes.<br /><br />Opcionalmente puedes establecer un nombre para mostrar del remitente, configurando la dirección de envío así:<br /><code><b>\"Mi Nombre para Mostrar\" &lt;mi-correo@mi-host.com&gt;</b></code>",
 			"accountSmimeSign": "Sign with S/MIME",
-			"accountSmimeSignHint": "Files must be located in the certificates path, defined in the Axia4 configuration file ('config.json').",
+			"accountSmimeSignHint": "Los archivos deben estar ubicados en la ruta de certificados, definida en el archivo de configuración de Axia4 ('config.json').",
 			"accountTest": "Correo de prueba",
 			"accountUser": "Nombre de usuario",
 			"accounts": "Cuentas de correo",
@@ -459,15 +459,15 @@
 		"navigationSystemMsg": "Mensaje del sistema",
 		"oauthClient": {
 			"button": {
-				"defaultO365": "Defaults: Exchange Online",
-				"defaultOpenId": "Defaults: Open ID Connect"
+				"defaultO365": "Predeterminados: Exchange Online",
+				"defaultOpenId": "Predeterminados: Open ID Connect"
 			},
-			"claimAdmin": "Admin claim",
-			"claimAdminHint": "Name of claim field, which grants admin permission on the Axia4 instance, if the expected string value matches the field value exactly. If an admin claim is set, it must be included for all users.",
-			"claimRoles": "Roles claim",
-			"claimRolesHint": "Name of the claim field, which contains user roles or groups. If set, Axia4 roles can be mapped to values in this claim. Value must be a JSON string array, such as: [\"all-users\", \"department-it\"]",
-			"claimUsername": "Username claim",
-			"claimUsernameHint": "Name of the claim field, which contains the username. Must be filled. Usernames must be unique for an OAuth client.",
+			"claimAdmin": "Reclamación de administrador",
+			"claimAdminHint": "Nombre del campo de reclamación que otorga permiso de administrador en la instancia de Axia4, si el valor de cadena esperado coincide exactamente con el valor del campo. Si se establece una reclamación de administrador, debe incluirse para todos los usuarios.",
+			"claimRoles": "Reclamación de roles",
+			"claimRolesHint": "Nombre del campo de reclamación que contiene roles o grupos de usuario. Si se establece, los roles de Axia4 pueden asignarse a valores en esta reclamación. El valor debe ser un array de cadena JSON, como: [\"all-users\", \"department-it\"]",
+			"claimUsername": "Reclamación de nombre de usuario",
+			"claimUsernameHint": "Nombre del campo de reclamación que contiene el nombre de usuario. Debe rellenarse. Los nombres de usuario deben ser únicos para un cliente OAuth.",
 			"clientId": "ID del cliente",
 			"clientIdHint": "Generado en el lado del proveedor al crear un cliente OAuth2.",
 			"clientSecret": "Secreto del cliente",
@@ -477,8 +477,8 @@
 			"dialog": {
 				"delete": "¿Estás seguro de que deseas eliminar este cliente OAuth?<br /><br />Esta acción es irreversible.</b>"
 			},
-			"flow": "OAuth flow",
-			"loginMetaMap": "Update user details via claims",
+			"flow": "Flujo OAuth",
+			"loginMetaMap": "Actualizar detalles del usuario mediante reclamaciones",
 			"nameHint": "Un nombre interno para referenciar este cliente OAuth dentro de Axia4.",
 			"option": {
 				"flow": {
@@ -486,20 +486,20 @@
 					"clientCreds": "Client credentials"
 				},
 				"flowHint": {
-					"authCodePkce": "<p>This flow is used in Axia4 to authenticate users via external identity providers, such as Keycloak or Microsoft Entra ID.</p><p>'Authentication Code with Proof Key for Code Exchange' is an Open ID Connect flow. Users are forwarded to authenticate with an identity provider. After authentication, a user is redirected back to Axia4 with verification of identity and user meta data.</p>",
-					"clientCreds": "<p>This flow is used in Axia4 to authenticate itself against a service, such as Exchange Online.</p><p>'Client Credentials' is an OAuth 2.0 flow, with which Axia4 authenticates against a service provider, to receive access to protected resources such as a mailbox. Any resource accessed via the 'Client Credentials' flow should belong to the client (in this case Axia4) - it is not designed to access user resources directly or on behalf.</p><p>This flow is currently only used for access to mail resources.</p>"
+					"authCodePkce": "<p>Este flujo se utiliza en Axia4 para autenticar usuarios a través de proveedores de identidad externos, como Keycloak o Microsoft Entra ID.</p><p>'Código de autenticación con clave de prueba para intercambio de código' es un flujo Open ID Connect. Los usuarios se reenviian para autenticarse con un proveedor de identidad. Después de la autenticación, un usuario es redirigido de vuelta a Axia4 con verificación de identidad y metadatos de usuario.</p>",
+					"clientCreds": "<p>Este flujo se utiliza en Axia4 para autenticarse contra un servicio, como Exchange Online.</p><p>'Credenciales de cliente' es un flujo OAuth 2.0, con el cual Axia4 se autentica contra un proveedor de servicios para recibir acceso a recursos protegidos como un buzón. Cualquier recurso al que se acceda a través del flujo 'Credenciales de cliente' debe pertenecer al cliente (en este caso Axia4) - no está diseñado para acceder a recursos del usuario directamente o en nombre de alguien.</p><p>Este flujo actualmente solo se utiliza para acceso a recursos de correo.</p>"
 				}
 			},
-			"providerUrl": "Provider URL",
-			"providerUrlHint": "URL of the chosen provider for its OAuth service discovery, often called 'Issuer URL'.",
-			"redirectUrl": "Redirect URL",
-			"redirectUrlHint": "Users are redirected here after authentication. Should be the login URL of Axia4. Must also be registered at the service provider.",
+			"providerUrl": "URL del proveedor",
+			"providerUrlHint": "URL del proveedor elegido para su descubrimiento de servicio OAuth, a menudo llamada 'URL de emisor'.",
+			"redirectUrl": "URL de redireccionamiento",
+			"redirectUrlHint": "Los usuarios son redirigidos aquí después de la autenticación. Debe ser la URL de inicio de sesión de Axia4. También debe estar registrada en el proveedor de servicios.",
 			"scopes": "Ámbitos",
 			"scopesHint": "Los ámbitos le dicen al proveedor qué desea hacer o acceder un cliente OAuth. Son definidos por el proveedor y deben asignarse al cliente para ser utilizables - consulta la documentación del proveedor para obtener una lista de ámbitos disponibles.",
 			"title": "Cliente OAuth '{NAME}'",
 			"titleNew": "Nuevo cliente OAuth",
 			"tokenUrl": "URL del token",
-			"tokenUrlExample": "Example for Exchange Online: https://login.microsoftonline.com/YOUR_TENANT_NAME/oauth2/v2.0/token",
+			"tokenUrlExample": "Ejemplo para Exchange Online: https://login.microsoftonline.com/YOUR_TENANT_NAME/oauth2/v2.0/token",
 			"tokenUrlHint": "URL donde se generan los tokens OAuth2. Estos están documentados por tu proveedor."
 		},
 		"repo": {
@@ -919,7 +919,7 @@
 			"columnBoolAtrIcon": "Mostrar icono de atributo si es VERDADERO",
 			"columnClipboard": "Portapapeles",
 			"columnLengthFiles": "Recuento de archivos",
-			"columnNoShrink": "Does not shrink",
+			"columnNoShrink": "No se encoge",
 			"columnNoThousandsSep": "No thousands separator",
 			"columnPreviewLarge": "Vista previa grande",
 			"columnSize": "Tamaño (píxeles)",
